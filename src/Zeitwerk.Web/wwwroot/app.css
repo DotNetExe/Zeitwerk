@@ -3,7 +3,7 @@
 }
 
 html, body {
-    background: #111317;
+    background: #0D0D0D;
 }
 
 .zw-muted {
@@ -34,7 +34,11 @@ html, body {
 }
 
 .zw-appbar .zw-navlink .mud-nav-link.active {
-    background: rgba(110, 168, 254, .15);
+    background: rgba(212, 198, 2, .15);
+}
+
+.zw-appbar .mud-icon-root {
+    color: var(--mud-palette-primary);
 }
 
 /* Projektfarbe */

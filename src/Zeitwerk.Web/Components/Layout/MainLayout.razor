@@ -4,6 +4,7 @@
 <MudPopoverProvider />
 <MudDialogProvider CloseOnEscapeKey="true" />
 <MudSnackbarProvider />
+<Shortcuts />
 
 <MudLayout>
     <MudAppBar Elevation="0" Dense="true" Class="zw-appbar">
@@ -12,9 +13,12 @@
             <span class="zw-brand-word">Zeit<span>werk</span></span>
         </a>
         <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Today" Class="zw-navlink">Tag</MudNavLink>
+        <MudNavLink Href="woche" Icon="@Icons.Material.Filled.ViewWeek" Class="zw-navlink">Woche</MudNavLink>
         <MudNavLink Href="kalender" Icon="@Icons.Material.Filled.CalendarMonth" Class="zw-navlink">Kalender</MudNavLink>
+        <MudNavLink Href="auswertung" Icon="@Icons.Material.Filled.BarChart" Class="zw-navlink">Auswertung</MudNavLink>
         <MudNavLink Href="stammdaten" Icon="@Icons.Material.Filled.FolderOpen" Class="zw-navlink">Stammdaten</MudNavLink>
         <MudNavLink Href="export" Icon="@Icons.Material.Filled.FileDownload" Class="zw-navlink">Export</MudNavLink>
+        <MudNavLink Href="einstellungen" Icon="@Icons.Material.Filled.Settings" Class="zw-navlink">Einstellungen</MudNavLink>
     </MudAppBar>
     <MudMainContent>
         <div class="zw-shell">

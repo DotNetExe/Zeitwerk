@@ -1,0 +1,85 @@
+@* Command-Palette (Strg+K): Suche über Projekte, zuletzt genutzte Kombinationen und Befehle. Gibt den gewählten Eintrag zurück. *@
+
+<MudDialog Class="zw-palette" ContentClass="pa-0">
+    <DialogContent>
+        <div class="pa-3">
+            <MudTextField T="string" Value="_query" ValueChanged="OnQueryChanged" Immediate="true" AutoFocus="true"
+                          Placeholder="Projekt, Tätigkeit oder Befehl …" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          OnKeyDown="OnKeyDown" autocomplete="off" />
+        </div>
+        <div class="zw-palette-list" role="listbox">
+            @if (_matches.Count == 0)
+            {
+                <MudText Class="zw-muted pa-4">Keine Treffer.</MudText>
+            }
+            @for (var i = 0; i < _matches.Count; i++)
+            {
+                var index = i;
+                var item = _matches[i];
+                <div class="zw-palette-item @(index == _selected ? "zw-palette-active" : "")" role="option"
+                     aria-selected="@(index == _selected)"
+                     @onclick="() => Choose(item)" @onmousemove="() => _selected = index">
+                    @if (item.Color is not null)
+                    {
+                        <ProjectDot Color="@item.Color" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@item.Icon" Size="Size.Small" />
+                    }
+                    <span class="zw-palette-title">
+                        @item.Title
+                        @if (item.Subtitle is not null)
+                        {
+                            <span class="zw-muted"> · @item.Subtitle</span>
+                        }
+                    </span>
+                    <span class="zw-palette-group">@item.Group</span>
+                </div>
+            }
+        </div>
+        <div class="zw-palette-hint zw-muted">
+            <kbd class="zw-kbd">↑</kbd><kbd class="zw-kbd">↓</kbd> auswählen ·
+            <kbd class="zw-kbd">Enter</kbd> ausführen · <kbd class="zw-kbd">Esc</kbd> schließen
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private const int MaxItems = 12;
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public IReadOnlyList<PaletteItem> Items { get; set; } = [];
+
+    private string? _query;
+    private List<PaletteItem> _matches = [];
+    private int _selected;
+
+    protected override void OnParametersSet() => OnQueryChanged(_query);
+
+    private void OnQueryChanged(string? query)
+    {
+        _query = query;
+        _matches = PaletteItem.Filter(Items, query, MaxItems);
+        _selected = 0;
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown" when _matches.Count > 0:
+                _selected = (_selected + 1) % _matches.Count;
+                break;
+            case "ArrowUp" when _matches.Count > 0:
+                _selected = (_selected - 1 + _matches.Count) % _matches.Count;
+                break;
+            case "Enter" when _selected < _matches.Count:
+                Choose(_matches[_selected]);
+                break;
+        }
+    }
+
+    private void Choose(PaletteItem item) => MudDialog.Close(DialogResult.Ok(item));
+}

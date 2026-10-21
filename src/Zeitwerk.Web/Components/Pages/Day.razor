@@ -6,6 +6,7 @@
 @inject Clock Clock
 @inject IDialogService Dialogs
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 
 <PageTitle>@_date.ToString("dddd, dd.MM.yyyy") – Zeitwerk</PageTitle>
 
@@ -27,7 +28,7 @@
 </MudStack>
 
 <MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
-    <DayTimeline Date="_date" Entries="_entries" Now="_now" OnEntryClick="Edit" />
+    <DayTimeline Date="_date" Entries="_entries" Now="_now" OnEntryClick="Edit" Gaps="_gaps" OnGapClick="EditGap" />
 </MudPaper>
 
 @if (_entries.Count == 0)
@@ -36,6 +37,19 @@
 }
 else
 {
+    @if (_mergeable.Count > 0)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3" Icon="@Icons.Material.Filled.MergeType">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <span>
+                    @(_mergeable.Count == 1 ? "Ein Paar" : $"{_mergeable.Count} Paare") direkt aneinander grenzender Einträge
+                    mit gleichem Projekt und gleicher Tätigkeit.
+                </span>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" OnClick="MergeAll">Alle zusammenführen</MudButton>
+            </MudStack>
+        </MudAlert>
+    }
+
     <MudSimpleTable Dense="true" Hover="true" Elevation="0" Outlined="true" Class="zw-entries">
         <thead>
             <tr>
@@ -43,11 +57,31 @@ else
                 <th class="text-right">Dauer</th>
                 <th>Projekt</th>
                 <th>Tätigkeit</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
             @foreach (var entry in _entries)
             {
+                @if (_gaps.FirstOrDefault(g => g.After == entry) is { } gap)
+                {
+                    <tr @onclick="() => EditGap(gap)" class="zw-clickable zw-gap-row" title="Unbelegte Zeit – vielleicht eine Pause">
+                        <td>@Clock.ToLocal(gap.Start).ToString("HH:mm") – @Clock.ToLocal(gap.End).ToString("HH:mm")</td>
+                        <td class="text-right">@Format.Duration(gap.Duration)</td>
+                        <td>Lücke</td>
+                        <td @onclick:stopPropagation="true">
+                            <MudMenu Label="Lücke füllen mit …" Size="Size.Small" Variant="Variant.Text" Dense="true"
+                                     EndIcon="@Icons.Material.Filled.ArrowDropDown">
+                                <MudMenuItem OnClick="() => Fill(gap, gap.Before)">
+                                    <ProjectDot Color="@gap.Before.Project.Color" /> <span class="ml-2">vorher: @WorkLabel(gap.Before)</span>
+                                </MudMenuItem>
+                                <MudMenuItem OnClick="() => Fill(gap, gap.After)">
+                                    <ProjectDot Color="@gap.After.Project.Color" /> <span class="ml-2">danach: @WorkLabel(gap.After)</span>
+                                </MudMenuItem>
+                            </MudMenu>
+                        </td>
+                    </tr>
+                }
                 <tr @onclick="() => Edit(entry)" class="zw-clickable">
                     <td>
                         @Clock.ToLocal(entry.Start).ToString("HH:mm") –
@@ -66,7 +100,16 @@ else
                     </td>
                     <td class="text-right">@Format.Duration(entry.Duration(_now))</td>
                     <td><ProjectDot Color="@entry.Project.Color" /> <span class="ml-2">@entry.Project.DisplayName</span></td>
-                    <td>@entry.Activity</td>
+                    <td><ActivityText Activity="@entry.Activity" Project="entry.Project" /></td>
+                    <td class="text-right" @onclick:stopPropagation="true">
+                        @if (_mergeable.FirstOrDefault(p => p.First == entry).Second is { } next)
+                        {
+                            <MudTooltip Text="Mit dem folgenden Eintrag zusammenführen">
+                                <MudIconButton Icon="@Icons.Material.Filled.MergeType" Size="Size.Small" Color="Color.Info"
+                                               OnClick="() => Merge(entry, next)" aria-label="Mit dem folgenden Eintrag zusammenführen" />
+                            </MudTooltip>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
@@ -89,7 +132,9 @@ else
 
     private DateOnly _date;
     private List<TimeEntry> _entries = [];
+    private List<Gap> _gaps = [];
     private TimeSpan _total;
+    private List<(TimeEntry First, TimeEntry Second)> _mergeable = [];
     private DateTimeOffset _now;
     private System.Threading.Timer? _ticker;
 
@@ -115,14 +160,20 @@ else
     {
         _now = Clock.UtcNow;
         _entries = await Entries.GetEntriesAsync(_date, _date.AddDays(1));
+        _mergeable = SplitMergeRules.FindMergeablePairs(_entries, Clock.Zone);
         Recalculate();
     }
+
+    private Task Merge(TimeEntry first, TimeEntry second) => Entries.MergeAsync(first.Id, second.Id);
+
+    private Task MergeAll() => Entries.MergeAllAsync(_date);
 
     private void Recalculate()
     {
         var from = Clock.StartOfDay(_date);
         var to = Clock.StartOfDay(_date.AddDays(1));
         _total = _entries.Aggregate(TimeSpan.Zero, (acc, e) => acc + EntryService.OverlapWith(e, from, to, _now));
+        _gaps = Gaps.Find(_entries, from, to);
     }
 
     private void OnChanged() => InvokeAsync(async () =>
@@ -146,6 +197,30 @@ else
         };
         await Dialogs.ShowAsync<EntryDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
     }
+
+    private async Task EditGap(Gap gap)
+    {
+        var parameters = new DialogParameters<EntryDialog>
+        {
+            { d => d.Date, _date },
+            { d => d.Start, gap.Start },
+            { d => d.End, gap.End },
+        };
+        await Dialogs.ShowAsync<EntryDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
+
+    /// <summary>Füllt die Lücke, indem der Nachbareintrag bis an die Lücke heran verlängert wird.</summary>
+    private async Task Fill(Gap gap, TimeEntry neighbour)
+    {
+        var error = neighbour == gap.Before
+            ? await Entries.SaveAsync(neighbour.Id, neighbour.ProjectId, neighbour.Activity, neighbour.Start, gap.End)
+            : await Entries.SaveAsync(neighbour.Id, neighbour.ProjectId, neighbour.Activity, gap.Start, neighbour.End);
+        if (error is not null)
+            Snackbar.Add(error, Severity.Error);
+    }
+
+    private static string WorkLabel(TimeEntry e) =>
+        e.Project.DisplayName + (e.Activity is null ? "" : $" · {e.Activity}");
 
     public void Dispose()
     {

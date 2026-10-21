@@ -1,0 +1,189 @@
+@page "/auswertung"
+@implements IDisposable
+@inject ReportService Reports
+@inject ChangeNotifier Notifier
+@inject Clock Clock
+
+<PageTitle>Auswertung – Zeitwerk</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="3" Class="mb-4">
+    <MudText Typo="Typo.h5" Class="mr-4">Auswertung</MudText>
+    <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+        @foreach (var (label, period) in Presets)
+        {
+            <MudButton Size="Size.Small" Variant="@(period == _period ? Variant.Filled : Variant.Outlined)"
+                       Color="@(period == _period ? Color.Primary : Color.Default)" OnClick="() => SetAsync(period)">
+                @label
+            </MudButton>
+        }
+    </MudStack>
+    <MudSpacer />
+    <div class="zw-report-dates">
+        <MudDatePicker Label="Von" Date="ToDateTime(_period.From)" DateChanged="d => SetFromAsync(d)" DateFormat="dd.MM.yyyy"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudDatePicker Label="Bis" Date="ToDateTime(_period.To)" DateChanged="d => SetToAsync(d)" DateFormat="dd.MM.yyyy"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" />
+    </div>
+</MudStack>
+
+@if (_report is { } report)
+{
+    <div class="zw-report-kpis">
+        <div class="zw-report-kpi">
+            <div class="zw-report-kpi-label">Gebucht</div>
+            <div class="zw-report-kpi-value">@Format.Duration(report.Total) h</div>
+            <div class="zw-report-kpi-sub">@Range(report.Period)</div>
+        </div>
+        <div class="zw-report-kpi">
+            <div class="zw-report-kpi-label">Vorzeitraum</div>
+            <div class="zw-report-kpi-value">@Format.Duration(report.PreviousTotal) h</div>
+            <div class="zw-report-kpi-sub">@Range(report.PreviousPeriod)</div>
+        </div>
+        <div class="zw-report-kpi">
+            <div class="zw-report-kpi-label">Veränderung</div>
+            <div class="zw-report-kpi-value @DeltaClass(report.Delta)">@Format.Delta(report.Delta) h</div>
+            <div class="zw-report-kpi-sub">@Percent(report.Total, report.PreviousTotal)</div>
+        </div>
+    </div>
+
+    @if (report.Total == TimeSpan.Zero && report.PreviousTotal == TimeSpan.Zero)
+    {
+        <MudText Class="zw-muted mt-6">Im gewählten Zeitraum gibt es keine abgeschlossenen Zeiteinträge.</MudText>
+    }
+    else
+    {
+        <div class="zw-report-grid">
+            <section class="zw-report-card">
+                <h2>Kunden</h2>
+                @Distribution(report.Customers)
+                @Table(report.Customers, "Kunde")
+            </section>
+            <section class="zw-report-card">
+                <h2>Projekte</h2>
+                @Distribution(report.Projects)
+                @Table(report.Projects, "Projekt")
+            </section>
+            <section class="zw-report-card zw-report-wide">
+                <h2>Top-Tätigkeiten</h2>
+                @if (report.Activities.Count == 0)
+                {
+                    <p class="zw-muted">Keine Zeiteinträge mit Tätigkeit im Zeitraum.</p>
+                }
+                else
+                {
+                    @Table(report.Activities, "Tätigkeit")
+                }
+            </section>
+        </div>
+    }
+}
+
+@code {
+    private ReportPeriod _period = null!;
+    private Report? _report;
+
+    private IEnumerable<(string Label, ReportPeriod Period)> Presets =>
+    [
+        ("Diese Woche", ReportPeriod.ThisWeek(Clock.Today)),
+        ("Dieser Monat", ReportPeriod.Month(Clock.Today)),
+        ("Letzter Monat", ReportPeriod.Month(Clock.Today, -1)),
+        ("Dieses Jahr", ReportPeriod.ThisYear(Clock.Today)),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Notifier.Changed += OnChanged;
+        await SetAsync(ReportPeriod.Month(Clock.Today));
+    }
+
+    private async Task SetAsync(ReportPeriod period)
+    {
+        _period = period;
+        _report = await Reports.GetReportAsync(period);
+    }
+
+    private Task SetFromAsync(DateTime? date) => date is { } d
+        ? SetAsync(new(DateOnly.FromDateTime(d), Max(DateOnly.FromDateTime(d).AddDays(1), _period.ToExclusive)))
+        : Task.CompletedTask;
+
+    private Task SetToAsync(DateTime? date) => date is { } d
+        ? SetAsync(new(Min(_period.From, DateOnly.FromDateTime(d)), DateOnly.FromDateTime(d).AddDays(1)))
+        : Task.CompletedTask;
+
+    private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
+    private static DateOnly Max(DateOnly a, DateOnly b) => a > b ? a : b;
+
+    private static DateTime ToDateTime(DateOnly d) => d.ToDateTime(TimeOnly.MinValue);
+
+    private static string Range(ReportPeriod p) => p.Days == 1 ? $"{p.From:dd.MM.yyyy}" : $"{p.From:dd.MM.yyyy} – {p.To:dd.MM.yyyy}";
+
+    private static string Percent(TimeSpan now, TimeSpan before) =>
+        before == TimeSpan.Zero ? "kein Vergleichswert" : $"{(now - before) / before:+0%;−0%;±0%} zum Vorzeitraum";
+
+    private static string DeltaClass(TimeSpan d) => d > TimeSpan.Zero ? "zw-delta-up" : d < TimeSpan.Zero ? "zw-delta-down" : "zw-muted";
+
+    private static string ColorOf(ReportRow row) => row.Color ?? "var(--mud-palette-primary)";
+
+    /// <summary>Gestapelter Balken mit dem Anteil jeder Zeile am Gesamtwert.</summary>
+    private RenderFragment Distribution(IReadOnlyList<ReportRow> rows) => __builder =>
+    {
+        <div class="zw-report-stack">
+            @foreach (var row in rows.Where(r => r.Duration > TimeSpan.Zero))
+            {
+                <span style="flex-grow:@((int)row.Duration.TotalMinutes);background:@ColorOf(row)"
+                      title="@row.Label: @Format.Duration(row.Duration) h (@row.Share.ToString("0%"))"></span>
+            }
+        </div>
+    };
+
+    private RenderFragment Table(IReadOnlyList<ReportRow> rows, string heading) => __builder =>
+    {
+        var max = rows.Max(r => r.Duration);
+        <table class="zw-report-table">
+            <thead>
+                <tr>
+                    <th>@heading</th>
+                    <th class="zw-report-barcol"></th>
+                    <th class="zw-num">Stunden</th>
+                    <th class="zw-num">Anteil</th>
+                    <th class="zw-num" title="Veränderung zum Vorzeitraum">Δ</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr class="@(row.Duration == TimeSpan.Zero ? "zw-report-gone" : "")">
+                        <td>
+                            <div class="zw-report-name">
+                                <span class="zw-report-dot" style="background:@ColorOf(row)"></span>
+                                <span>
+                                    @row.Label
+                                    @if (row.Detail is not null)
+                                    {
+                                        <span class="zw-muted zw-report-detail">@row.Detail</span>
+                                    }
+                                </span>
+                            </div>
+                        </td>
+                        <td class="zw-report-barcol">
+                            <div class="zw-report-bar">
+                                <span style="width:@((max > TimeSpan.Zero ? row.Duration / max * 100 : 0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%;background:@ColorOf(row)"></span>
+                            </div>
+                        </td>
+                        <td class="zw-num">@Format.Duration(row.Duration)</td>
+                        <td class="zw-num">@row.Share.ToString("0.0 %")</td>
+                        <td class="zw-num @DeltaClass(row.Delta)" title="Vorzeitraum: @Format.Duration(row.Previous) h">@Format.Delta(row.Delta)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+
+    private void OnChanged() => InvokeAsync(async () =>
+    {
+        await SetAsync(_period);
+        StateHasChanged();
+    });
+
+    public void Dispose() => Notifier.Changed -= OnChanged;
+}

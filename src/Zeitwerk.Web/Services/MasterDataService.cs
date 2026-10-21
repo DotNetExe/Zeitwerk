@@ -37,11 +37,13 @@ public sealed class MasterDataService(IDbContextFactory<ZeitwerkDbContext> dbFac
         return ProjectColors.Suggest(used);
     }
 
-    public async Task<string?> SaveCustomerAsync(int id, string name)
+    public async Task<string?> SaveCustomerAsync(int id, string name, string? ticketUrlTemplate, string? ticketPattern)
     {
         name = name.Trim();
         if (name.Length == 0)
             return "Bitte einen Namen angeben.";
+        if (ValidateTicketLinks(ref ticketUrlTemplate, ref ticketPattern) is { } ticketError)
+            return ticketError;
 
         await using var db = await dbFactory.CreateDbContextAsync();
         if (await db.Customers.AnyAsync(c => c.Id != id && c.Name == name))
@@ -51,16 +53,21 @@ public sealed class MasterDataService(IDbContextFactory<ZeitwerkDbContext> dbFac
         if (customer is null)
             return "Der Kunde existiert nicht mehr.";
         customer.Name = name;
+        customer.TicketUrlTemplate = ticketUrlTemplate;
+        customer.TicketPattern = ticketPattern;
         await db.SaveChangesAsync();
         notifier.NotifyChanged();
         return null;
     }
 
-    public async Task<string?> SaveProjectAsync(int id, int customerId, string name, string color)
+    public async Task<string?> SaveProjectAsync(int id, int customerId, string name, string color,
+        string? ticketUrlTemplate, string? ticketPattern)
     {
         name = name.Trim();
         if (name.Length == 0)
             return "Bitte einen Namen angeben.";
+        if (ValidateTicketLinks(ref ticketUrlTemplate, ref ticketPattern) is { } ticketError)
+            return ticketError;
 
         await using var db = await dbFactory.CreateDbContextAsync();
         if (await db.Projects.AnyAsync(p => p.Id != id && p.CustomerId == customerId && p.Name == name))
@@ -72,9 +79,20 @@ public sealed class MasterDataService(IDbContextFactory<ZeitwerkDbContext> dbFac
         project.CustomerId = customerId;
         project.Name = name;
         project.Color = color;
+        project.TicketUrlTemplate = ticketUrlTemplate;
+        project.TicketPattern = ticketPattern;
         await db.SaveChangesAsync();
         notifier.NotifyChanged();
         return null;
+    }
+
+    /// <summary>Leere Angaben werden zu <c>null</c> (= erben bzw. Standard); liefert eine Fehlermeldung bei ungültigen Angaben.</summary>
+    private static string? ValidateTicketLinks(ref string? template, ref string? pattern)
+    {
+        template = string.IsNullOrWhiteSpace(template) ? null : template.Trim();
+        pattern = string.IsNullOrWhiteSpace(pattern) ? null : pattern.Trim();
+        return (template is null ? null : TicketLinks.ValidateTemplate(template))
+            ?? (pattern is null ? null : TicketLinks.ValidatePattern(pattern));
     }
 
     public async Task SetCustomerArchivedAsync(int id, bool archived)

@@ -22,6 +22,49 @@ namespace Zeitwerk.Web.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Zeitwerk.Web.Domain.Absence", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .IsUnique();
+
+                    b.ToTable("Absences");
+                });
+
+            modelBuilder.Entity("Zeitwerk.Web.Domain.AccountStart", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<TimeSpan>("Balance")
+                        .HasColumnType("interval");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AccountStarts");
+                });
+
             modelBuilder.Entity("Zeitwerk.Web.Domain.Customer", b =>
                 {
                     b.Property<int>("Id")
@@ -37,6 +80,14 @@ namespace Zeitwerk.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TicketPattern")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TicketUrlTemplate")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.HasKey("Id");
 
@@ -69,6 +120,14 @@ namespace Zeitwerk.Web.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TicketPattern")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("TicketUrlTemplate")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.HasKey("Id");
 
@@ -113,6 +172,46 @@ namespace Zeitwerk.Web.Data.Migrations
                     b.HasIndex("Start");
 
                     b.ToTable("TimeEntries");
+                });
+
+            modelBuilder.Entity("Zeitwerk.Web.Domain.WorkSchedule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<TimeSpan>("Friday")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("Monday")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("Saturday")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("Sunday")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("Thursday")
+                        .HasColumnType("interval");
+
+                    b.Property<TimeSpan>("Tuesday")
+                        .HasColumnType("interval");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("Wednesday")
+                        .HasColumnType("interval");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ValidFrom")
+                        .IsUnique();
+
+                    b.ToTable("WorkSchedules");
                 });
 
             modelBuilder.Entity("Zeitwerk.Web.Domain.Project", b =>

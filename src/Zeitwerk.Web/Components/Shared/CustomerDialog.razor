@@ -5,12 +5,19 @@
         <MudText Typo="Typo.h6">@(Customer is null ? "Kunde anlegen" : "Kunde bearbeiten")</MudText>
     </TitleContent>
     <DialogContent>
-        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
-                      Immediate="true" OnKeyDown="@(e => e.Key == "Enter" ? Save() : Task.CompletedTask)" />
-        @if (_error is not null)
-        {
-            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_error</MudAlert>
-        }
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" OnKeyDown="@(e => e.Key == "Enter" ? Save() : Task.CompletedTask)" />
+            <MudTextField @bind-Value="_ticketUrl" Label="Ticket-URL (optional)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Placeholder="https://jira.example.com/browse/{ticket}"
+                          HelperText="Ticketnummern in Tätigkeiten werden verlinkt; {ticket} wird ersetzt." />
+            <MudTextField @bind-Value="_ticketPattern" Label="Ticket-Muster (regulärer Ausdruck)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Placeholder="@TicketLinks.DefaultPattern" HelperText="@($"Leer = {TicketLinks.DefaultPattern}")" />
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+            }
+        </MudStack>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="() => MudDialog.Cancel()">Abbrechen</MudButton>
@@ -23,13 +30,20 @@
     [Parameter] public Customer? Customer { get; set; }
 
     private string _name = "";
+    private string? _ticketUrl;
+    private string? _ticketPattern;
     private string? _error;
 
-    protected override void OnInitialized() => _name = Customer?.Name ?? "";
+    protected override void OnInitialized()
+    {
+        _name = Customer?.Name ?? "";
+        _ticketUrl = Customer?.TicketUrlTemplate;
+        _ticketPattern = Customer?.TicketPattern;
+    }
 
     private async Task Save()
     {
-        _error = await MasterData.SaveCustomerAsync(Customer?.Id ?? 0, _name);
+        _error = await MasterData.SaveCustomerAsync(Customer?.Id ?? 0, _name, _ticketUrl, _ticketPattern);
         if (_error is null)
             MudDialog.Close(DialogResult.Ok(true));
     }

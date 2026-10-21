@@ -1,17 +1,21 @@
-@* Horizontaler Zeitstrahl eines Tages; Blöcke in Projektfarbe, Klick öffnet den Eintrag. *@
+@* Horizontaler Zeitstrahl eines Tages; Blöcke in Projektfarbe, Klick öffnet den Eintrag.
+   Lücken zwischen Einträgen sind schraffiert; Klick legt einen Eintrag für die Lücke an. *@
 @inject Clock Clock
 
-<div class="zw-timeline">
+<div class="zw-timeline@(ShowHourLabels ? "" : " zw-timeline-compact")">
     <div class="zw-timeline-track">
         @for (var h = _fromHour; h <= _toHour; h++)
         {
             <div class="zw-timeline-hour" style="left:@Pct(h * 60)">
-                <span>@h.ToString("00")</span>
+                @if (ShowHourLabels)
+                {
+                    <span>@h.ToString("00")</span>
+                }
             </div>
         }
         @foreach (var entry in Entries)
         {
-            var (start, end) = Clip(entry);
+            var (start, end) = Clip(Clock, Date, entry, Now);
             if (end <= start)
                 continue;
             var onHold = entry.IsOnHold(Now);
@@ -21,12 +25,20 @@
                  style="left:@Pct(start);width:@Pct(end - start, offset: false);--c:@entry.Project.Color"
                  title="@Tooltip(entry)"
                  @onclick="() => OnEntryClick.InvokeAsync(entry)">
-                <span>@entry.Project.Name@(entry.Activity is null ? "" : $" · {entry.Activity}")</span>
+                <span>@entry.Project.Name@if (entry.Activity is not null){<text> · </text><ActivityText Activity="@entry.Activity" Project="entry.Project" />}</span>
             </div>
+        }
+        @foreach (var gap in Gaps)
+        {
+            var start = Minutes(gap.Start);
+            <div class="zw-gap"
+                 style="left:@Pct(start);width:@Pct(Minutes(gap.End) - start, offset: false)"
+                 title="@GapTooltip(gap)"
+                 @onclick="() => OnGapClick.InvokeAsync(gap)"></div>
         }
         @if (Clock.LocalDate(Now) == Date)
         {
-            var minute = MinuteOfDay(Now);
+            var minute = MinuteOfDay(Clock, Now);
             if (minute >= _fromHour * 60 && minute <= _toHour * 60)
             {
                 <div class="zw-timeline-now" style="left:@Pct(minute)" title="Jetzt"></div>
@@ -36,48 +48,54 @@
 </div>
 
 @code {
-    private const int DefaultFrom = 7, DefaultTo = 19;
-
     [Parameter, EditorRequired] public DateOnly Date { get; set; }
     [Parameter, EditorRequired] public IReadOnlyList<TimeEntry> Entries { get; set; } = [];
     [Parameter, EditorRequired] public DateTimeOffset Now { get; set; }
     [Parameter] public EventCallback<TimeEntry> OnEntryClick { get; set; }
+    [Parameter] public IReadOnlyList<Gap> Gaps { get; set; } = [];
+    [Parameter] public EventCallback<Gap> OnGapClick { get; set; }
+    /// <summary>Fester Ausschnitt, z. B. gemeinsam für mehrere Zeitleisten; ohne Angabe Auto-Zoom.</summary>
+    [Parameter] public HourRange? Range { get; set; }
+    [Parameter] public bool ShowHourLabels { get; set; } = true;
 
-    private int _fromHour = DefaultFrom, _toHour = DefaultTo;
+    private int _fromHour, _toHour;
 
-    protected override void OnParametersSet()
+    protected override void OnParametersSet() =>
+        (_fromHour, _toHour) = Range ?? AutoZoom(Clock, Date, Entries, Now);
+
+    /// <summary>Auto-Zoom: Standard 07–19 Uhr, erweitert auf alle Einträge des Tages und die Jetzt-Linie (volle Stunden).</summary>
+    public static HourRange AutoZoom(Clock clock, DateOnly date, IEnumerable<TimeEntry> entries, DateTimeOffset now)
     {
-        // Auto-Zoom: Standard 07–19 Uhr, erweitert auf alle Einträge (volle Stunden).
-        _fromHour = DefaultFrom;
-        _toHour = DefaultTo;
-        foreach (var entry in Entries)
+        var range = HourRange.Default;
+        foreach (var entry in entries)
         {
-            var (start, end) = Clip(entry);
-            _fromHour = Math.Min(_fromHour, start / 60);
-            _toHour = Math.Max(_toHour, (end + 59) / 60);
+            var (start, end) = Clip(clock, date, entry, now);
+            if (end > start)
+                range = range.Include(start, end);
         }
-        if (Clock.LocalDate(Now) == Date)
+        if (clock.LocalDate(now) == date)
         {
-            var now = MinuteOfDay(Now);
-            _fromHour = Math.Min(_fromHour, now / 60);
-            _toHour = Math.Max(_toHour, (now + 59) / 60);
+            var minute = MinuteOfDay(clock, now);
+            range = range.Include(minute, minute);
         }
-        _toHour = Math.Min(_toHour, 24);
+        return range;
     }
 
     /// <summary>Beginn und Ende des Eintrags in Minuten seit Tagesbeginn, auf den Tag begrenzt.</summary>
-    private (int Start, int End) Clip(TimeEntry entry)
+    private static (int Start, int End) Clip(Clock clock, DateOnly date, TimeEntry entry, DateTimeOffset now)
     {
-        var dayStart = Clock.StartOfDay(Date);
-        var dayEnd = Clock.StartOfDay(Date.AddDays(1));
+        var dayStart = clock.StartOfDay(date);
+        var dayEnd = clock.StartOfDay(date.AddDays(1));
         // Offene Einträge reichen bis jetzt (mindestens einen Slot, damit on hold sichtbar ist).
-        var end = entry.End ?? Max(Now, entry.Start + TimeGrid.Slot);
+        var end = entry.End ?? Max(now, entry.Start + TimeGrid.Slot);
         var start = Max(entry.Start, dayStart);
         end = end < dayEnd ? end : dayEnd;
         return ((int)(start - dayStart).TotalMinutes, (int)(end - dayStart).TotalMinutes);
     }
 
-    private int MinuteOfDay(DateTimeOffset t) => (int)(t - Clock.StartOfDay(Clock.LocalDate(t))).TotalMinutes;
+    private int Minutes(DateTimeOffset t) => (int)(t - Clock.StartOfDay(Date)).TotalMinutes;
+
+    private static int MinuteOfDay(Clock clock, DateTimeOffset t) => (int)(t - clock.StartOfDay(clock.LocalDate(t))).TotalMinutes;
 
     private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) => a > b ? a : b;
 
@@ -95,4 +113,7 @@
         var activity = e.Activity is null ? "" : $"\n{e.Activity}";
         return $"{e.Project.DisplayName}{activity}\n{start} – {end} ({Format.Duration(e.Duration(Now))})";
     }
+
+    private string GapTooltip(Gap gap) =>
+        $"Lücke (Pause?)\n{Clock.ToLocal(gap.Start):HH:mm} – {Clock.ToLocal(gap.End):HH:mm} ({Format.Duration(gap.Duration)})\nKlick: Eintrag für die Lücke anlegen";
 }

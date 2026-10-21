@@ -1,0 +1,46 @@
+@* Hilfe-Overlay (?) mit allen Tastenkürzeln. *@
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Tastenkürzel</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSimpleTable Dense="true" Elevation="0" Class="zw-shortcut-table">
+            <tbody>
+                @foreach (var (keys, description) in All)
+                {
+                    <tr>
+                        <td class="text-nowrap">
+                            @foreach (var key in keys)
+                            {
+                                <kbd class="zw-kbd">@key</kbd>
+                            }
+                        </td>
+                        <td>@description</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        <MudText Typo="Typo.caption" Class="zw-muted mt-3 d-block">
+            Die Kürzel greifen nicht, solange der Fokus in einem Eingabefeld liegt oder ein Dialog offen ist.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Close()">Schließen</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private static readonly (string[] Keys, string Description)[] All =
+    [
+        (["Strg", "K"], "Command-Palette: Projekt starten/wechseln, Befehle"),
+        (["S"], "Stopp"),
+        (["←"], "Vorheriger Tag (Tagesansicht)"),
+        (["→"], "Nächster Tag (Tagesansicht)"),
+        (["T"], "Heute"),
+        (["?"], "Diese Hilfe"),
+        (["Esc"], "Dialog schließen"),
+    ];
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+}

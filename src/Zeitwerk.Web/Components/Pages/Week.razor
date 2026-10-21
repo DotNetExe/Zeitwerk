@@ -1,0 +1,172 @@
+@page "/woche"
+@page "/woche/{WeekText}"
+@implements IDisposable
+@using System.Globalization
+@inject EntryService Entries
+@inject ChangeNotifier Notifier
+@inject Clock Clock
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+<PageTitle>KW @_week, @_year – Zeitwerk</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4" Wrap="Wrap.Wrap">
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="() => Go(_monday.AddDays(-7))" aria-label="Vorherige Woche" />
+    <MudText Typo="Typo.h5" Class="zw-day-title">KW @_week · @_monday.ToString("dd.MM.") – @_monday.AddDays(6).ToString("dd.MM.yyyy")</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="() => Go(_monday.AddDays(7))" aria-label="Nächste Woche" />
+    @if (_monday != MondayOf(Clock.Today))
+    {
+        <MudButton Variant="Variant.Text" OnClick="() => Go(Clock.Today)">Heute</MudButton>
+    }
+    <MudSpacer />
+    <MudText Typo="Typo.h6">Woche: <b>@Format.Duration(_weekTotal)</b> h</MudText>
+</MudStack>
+
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <div class="zw-week">
+        @for (var i = 0; i < 7; i++)
+        {
+            var day = _monday.AddDays(i);
+            var total = _dayTotals[i];
+            var css = "zw-week-day zw-clickable" + (day == Clock.Today ? " zw-week-today" : "") + (i >= 5 ? " zw-muted" : "");
+            <div class="@css" @onclick="@(() => Nav.NavigateTo($"tag/{day:yyyy-MM-dd}"))" title="Tagesansicht öffnen">
+                <b>@day.ToString("ddd")</b> @day.ToString("dd.MM.")
+            </div>
+            <DayTimeline Date="day" Entries="_byDay[i]" Now="_now" Range="_range" ShowHourLabels="i == 0" OnEntryClick="Edit" />
+            <div class="zw-week-total">@(total > TimeSpan.Zero ? Format.Duration(total) : "–")</div>
+        }
+    </div>
+</MudPaper>
+
+@if (_projects.Count == 0)
+{
+    <MudText Class="zw-muted">Keine Einträge in dieser Woche.</MudText>
+}
+else
+{
+    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+        @foreach (var share in _projects)
+        {
+            <MudChip T="string" Variant="Variant.Outlined" Style="@($"border-color:{share.Project.Color}")">
+                <ProjectDot Color="@share.Project.Color" /> <span class="ml-2">@share.Project.DisplayName: <b>@Format.Duration(share.Duration)</b></span>
+            </MudChip>
+        }
+    </MudStack>
+}
+
+@code {
+    [Parameter] public string? WeekText { get; set; }
+
+    private sealed record ProjectShare(Project Project, TimeSpan Duration);
+
+    private DateOnly _monday;
+    private int _year, _week;
+    private List<TimeEntry> _entries = [];
+    private readonly List<TimeEntry>[] _byDay = [[], [], [], [], [], [], []];
+    private readonly TimeSpan[] _dayTotals = new TimeSpan[7];
+    private TimeSpan _weekTotal;
+    private List<ProjectShare> _projects = [];
+    private HourRange _range = HourRange.Default;
+    private DateTimeOffset _now;
+    private System.Threading.Timer? _ticker;
+
+    protected override void OnInitialized()
+    {
+        Notifier.Changed += OnChanged;
+        // Laufende Einträge und Jetzt-Linie einmal pro Minute aktualisieren.
+        _ticker = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            _now = Clock.UtcNow;
+            Recalculate();
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _monday = TryParseWeek(WeekText) ?? MondayOf(Clock.Today);
+        var anchor = _monday.ToDateTime(TimeOnly.MinValue);
+        _year = ISOWeek.GetYear(anchor);
+        _week = ISOWeek.GetWeekOfYear(anchor);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _now = Clock.UtcNow;
+        _entries = await Entries.GetEntriesAsync(_monday, _monday.AddDays(7));
+        Recalculate();
+    }
+
+    private void Recalculate()
+    {
+        _range = HourRange.Default;
+        _weekTotal = TimeSpan.Zero;
+        for (var i = 0; i < 7; i++)
+        {
+            var day = _monday.AddDays(i);
+            var from = Clock.StartOfDay(day);
+            var to = Clock.StartOfDay(day.AddDays(1));
+            _byDay[i] = _entries.Where(e => EntryService.OverlapWith(e, from, to, _now) > TimeSpan.Zero
+                                            || (e.IsOpen && e.Start >= from && e.Start < to)).ToList();
+            _dayTotals[i] = _byDay[i].Aggregate(TimeSpan.Zero, (acc, e) => acc + EntryService.OverlapWith(e, from, to, _now));
+            _weekTotal += _dayTotals[i];
+            // Gemeinsame Zeitachse: Auto-Zoom über alle Tage der Woche.
+            _range = _range.Union(DayTimeline.AutoZoom(Clock, day, _byDay[i], _now));
+        }
+        var weekStart = Clock.StartOfDay(_monday);
+        var weekEnd = Clock.StartOfDay(_monday.AddDays(7));
+        _projects = _entries
+            .GroupBy(e => e.ProjectId)
+            .Select(g => new ProjectShare(g.First().Project,
+                g.Aggregate(TimeSpan.Zero, (acc, e) => acc + EntryService.OverlapWith(e, weekStart, weekEnd, _now))))
+            .Where(s => s.Duration > TimeSpan.Zero)
+            .OrderByDescending(s => s.Duration)
+            .ToList();
+    }
+
+    /// <summary>Liest eine ISO-Woche im Format <c>2026-W43</c> und liefert deren Montag.</summary>
+    private static DateOnly? TryParseWeek(string? text)
+    {
+        if (text is not { Length: 8 } || text[4] != '-' || char.ToUpperInvariant(text[5]) != 'W'
+            || !int.TryParse(text.AsSpan(0, 4), NumberStyles.None, CultureInfo.InvariantCulture, out var year)
+            || !int.TryParse(text.AsSpan(6, 2), NumberStyles.None, CultureInfo.InvariantCulture, out var week)
+            || year < 1 || week < 1 || week > ISOWeek.GetWeeksInYear(year))
+            return null;
+        return DateOnly.FromDateTime(ISOWeek.ToDateTime(year, week, DayOfWeek.Monday));
+    }
+
+    private static DateOnly MondayOf(DateOnly d) => d.AddDays(-(((int)d.DayOfWeek + 6) % 7));
+
+    /// <summary>Pfad der Woche, die <paramref name="date"/> enthält.</summary>
+    public static string PathFor(DateOnly date)
+    {
+        var anchor = date.ToDateTime(TimeOnly.MinValue);
+        return $"woche/{ISOWeek.GetYear(anchor):0000}-W{ISOWeek.GetWeekOfYear(anchor):00}";
+    }
+
+    private void Go(DateOnly date) =>
+        Nav.NavigateTo(MondayOf(date) == MondayOf(Clock.Today) ? "woche" : PathFor(date));
+
+    private async Task Edit(TimeEntry entry)
+    {
+        var parameters = new DialogParameters<EntryDialog>
+        {
+            { d => d.Entry, entry },
+            { d => d.Date, Clock.LocalDate(entry.Start) },
+        };
+        await Dialogs.ShowAsync<EntryDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
+
+    private void OnChanged() => InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose()
+    {
+        Notifier.Changed -= OnChanged;
+        _ticker?.Dispose();
+    }
+}

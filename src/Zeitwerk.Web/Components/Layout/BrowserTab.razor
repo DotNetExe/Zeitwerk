@@ -1,0 +1,43 @@
+@* Überträgt den Timer-Zustand in Tab-Titel und Favicon; rendert selbst nichts. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@code {
+    /// <summary><c>null</c> im Leerlauf.</summary>
+    [Parameter] public TabStatus? Status { get; set; }
+
+    private IJSObjectReference? _module;
+    private TabStatus? _shown;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Nur bei Änderung an den Browser schicken – der Timer rendert sekündlich, der Titel ändert sich minütlich.
+        if (Status == _shown)
+            return;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./" + Assets["tabstatus.js"]);
+            if (Status is null)
+                await _module.InvokeVoidAsync("clear");
+            else
+                await _module.InvokeVoidAsync("show", Status.Title, Status.Icon);
+            _shown = Status;
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null)
+            return;
+        try
+        {
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+}

@@ -1,0 +1,24 @@
+@* Tätigkeit als Text; erkannte Ticketnummern werden zu Links im neuen Tab. Klicks auf Links lösen keine Klicks auf umgebende Elemente aus. *@
+@foreach (var segment in TicketLinks.Split(Activity, Project?.TicketLinks))
+{
+    if (segment.Url is null)
+    {
+        @segment.Text
+    }
+    else
+    {
+        <a href="@segment.Url" target="_blank" rel="noopener noreferrer" class="zw-ticket-link"
+           title="@($"{segment.Text} öffnen")" @onclick:stopPropagation="true">@segment.Text</a>
+    }
+}
+
+@code {
+    [Parameter] public string? Activity { get; set; }
+
+    /// <summary>Projekt des Eintrags (mit Kunde), aus dem die Ticket-Link-Konfiguration stammt.</summary>
+    [Parameter] public Project? Project { get; set; }
+
+    /// <summary><c>true</c>, wenn die Tätigkeit mindestens einen Ticket-Link enthält.</summary>
+    public static bool HasLinks(string? activity, Project? project) =>
+        TicketLinks.Split(activity, project?.TicketLinks).Any(s => s.Url is not null);
+}

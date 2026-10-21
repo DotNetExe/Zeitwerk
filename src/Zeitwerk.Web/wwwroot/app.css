@@ -253,6 +253,32 @@ html, body {
     color: var(--mud-palette-text-primary);
 }
 
+/* Unbelegte Lücke zwischen zwei Einträgen: nur ein Hinweis, daher dezent. */
+.zw-gap {
+    position: absolute;
+    top: 14px;
+    bottom: 14px;
+    background: repeating-linear-gradient(-45deg,
+        rgba(255, 255, 255, .10) 0 4px,
+        transparent 4px 8px);
+    border-top: 1px dashed rgba(255, 255, 255, .18);
+    border-bottom: 1px dashed rgba(255, 255, 255, .18);
+    cursor: pointer;
+    transition: background-color .15s;
+}
+
+.zw-gap:hover {
+    background-color: rgba(255, 255, 255, .08);
+}
+
+.zw-entries tr.zw-gap-row td {
+    color: var(--mud-palette-text-secondary);
+    font-style: italic;
+    background: repeating-linear-gradient(-45deg,
+        rgba(255, 255, 255, .03) 0 4px,
+        transparent 4px 8px);
+}
+
 .zw-timeline-now {
     position: absolute;
     top: -4px;
@@ -336,6 +362,82 @@ html, body {
     font-variant-numeric: tabular-nums;
 }
 
+/* Überstundenkonto */
+.zw-positive {
+    color: var(--mud-palette-success);
+}
+
+.zw-negative {
+    color: var(--mud-palette-error);
+}
+
+.zw-nowrap {
+    white-space: nowrap;
+}
+
+.zw-balance-chip {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.zw-calendar-dayhead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+}
+
+.zw-absence-menu {
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity .15s;
+}
+
+.zw-calendar-day:hover .zw-absence-menu {
+    opacity: 1;
+}
+
+.zw-absence-label {
+    font-size: .72rem;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, .08);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.zw-absent-vacation {
+    box-shadow: inset 3px 0 0 #4fc3f7;
+}
+
+.zw-absent-vacation .zw-absence-label {
+    color: #4fc3f7;
+}
+
+.zw-absent-sick {
+    box-shadow: inset 3px 0 0 #ffb74d;
+}
+
+.zw-absent-sick .zw-absence-label {
+    color: #ffb74d;
+}
+
+.zw-absent-holiday {
+    box-shadow: inset 3px 0 0 #ba68c8;
+}
+
+.zw-absent-holiday .zw-absence-label {
+    color: #ba68c8;
+}
+
+.zw-schedule-table .zw-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 /* Farbwahl */
 .zw-swatches {
     display: flex;
@@ -354,6 +456,58 @@ html, body {
 
 .zw-swatch-active {
     border-color: #fff;
+}
+
+/* Command-Palette und Tastenkürzel */
+.zw-palette-list {
+    padding: 0 8px 8px;
+}
+
+.zw-palette-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.zw-palette-active {
+    background: rgba(212, 198, 2, .15);
+}
+
+.zw-palette-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.zw-palette-group {
+    flex-shrink: 0;
+    font-size: .75rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+.zw-palette-hint {
+    padding: 8px 16px;
+    font-size: .75rem;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.zw-kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    margin-right: 4px;
+    padding: 1px 6px;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: .8em;
+    text-align: center;
+    background: rgba(255, 255, 255, .04);
 }
 
 /* Blazor-Fehleranzeige */
@@ -379,4 +533,67 @@ html, body {
 
 #blazor-error-ui a {
     color: #9cc3ff;
+}
+
+/* Wochenansicht: Datum | Zeitleiste | Tagessumme, gemeinsame Zeitachse */
+.zw-week {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr) 4rem;
+    align-items: end;
+    column-gap: 12px;
+}
+
+.zw-week .zw-timeline-compact {
+    padding-top: 4px;
+}
+
+.zw-week-day {
+    padding: 0 8px;
+    line-height: 56px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    white-space: nowrap;
+    transition: background .15s;
+}
+
+.zw-week-day:hover {
+    background: rgba(255, 255, 255, .05);
+}
+
+.zw-week-today {
+    color: var(--mud-palette-primary);
+    box-shadow: inset 2px 0 0 var(--mud-palette-primary);
+}
+
+.zw-week-total {
+    line-height: 56px;
+    margin-bottom: 4px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.zw-calendar-week.zw-clickable {
+    border-radius: 8px;
+    transition: background .15s;
+}
+
+.zw-calendar-week.zw-clickable:hover {
+    background: rgba(255, 255, 255, .05);
+}
+
+/* Ticket-Links in Tätigkeiten */
+.zw-ticket-link {
+    color: var(--mud-palette-primary);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+.zw-ticket-link:hover {
+    text-decoration-style: solid;
+}
+
+.zw-block .zw-ticket-link,
+.mud-chip .zw-ticket-link {
+    color: inherit;
 }

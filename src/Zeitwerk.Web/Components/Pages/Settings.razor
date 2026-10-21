@@ -1,0 +1,147 @@
+@page "/einstellungen"
+@inject OvertimeService Overtime
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject Clock Clock
+
+<PageTitle>Einstellungen – Zeitwerk</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">Einstellungen</MudText>
+
+<MudPaper Outlined="true" Elevation="0" Class="pa-4 mb-4" Style="max-width:880px">
+    <MudText Typo="Typo.h6" Class="mb-1">Überstundenkonto</MudText>
+    <MudText Typo="Typo.body2" Class="zw-muted mb-3">
+        Das Konto zählt ab dem Kontostart bis einschließlich heute. Der Startsaldo übernimmt z. B. Überstunden aus der Zeit davor.
+    </MudText>
+    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudDatePicker Label="Kontostart" @bind-Date="_startDate" DateFormat="dd.MM.yyyy" Editable="true" ShowWeekNumbers="true"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:12rem" />
+        <MudNumericField T="decimal" Label="Startsaldo (h)" @bind-Value="_startHours" Step="0.25m" Format="0.##"
+                         HelperText="negativ = Minusstunden" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:12rem" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveStart" Disabled="_startDate is null">Speichern</MudButton>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Outlined="true" Elevation="0" Class="pa-4" Style="max-width:880px">
+    <MudText Typo="Typo.h6" Class="mb-1">Soll-Arbeitszeit</MudText>
+    <MudText Typo="Typo.body2" Class="zw-muted mb-3">
+        Eine Version gilt ab ihrem Datum bis zur nächsten; spätere Änderungen verändern frühere Tage nicht.
+        Vor der ersten Version gilt der Standard (Mo–Fr je 8 h).
+    </MudText>
+
+    <MudSimpleTable Dense="true" Elevation="0" Class="mb-4 zw-schedule-table">
+        <thead>
+            <tr>
+                <th>Gültig ab</th>
+                @foreach (var day in Days)
+                {
+                    <th class="zw-num">@DayName(day)</th>
+                }
+                <th class="zw-num">Woche</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var schedule in _schedules)
+            {
+                <tr>
+                    <td>@schedule.ValidFrom.ToString("dd.MM.yyyy")</td>
+                    @foreach (var day in Days)
+                    {
+                        <td class="zw-num">@Format.Duration(schedule[day])</td>
+                    }
+                    <td class="zw-num"><b>@Format.Duration(schedule.WeekTotal)</b></td>
+                    <td class="zw-num">
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Edit" OnClick="() => Edit(schedule)" aria-label="Version bearbeiten" />
+                        <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => Delete(schedule)" aria-label="Version löschen" />
+                    </td>
+                </tr>
+            }
+            <tr>
+                <td class="zw-muted">Standard (davor)</td>
+                @foreach (var day in Days)
+                {
+                    <td class="zw-num">@Format.Duration(WorkSchedule.Default[day])</td>
+                }
+                <td class="zw-num"><b>@Format.Duration(WorkSchedule.Default.WeekTotal)</b></td>
+                <td></td>
+            </tr>
+        </tbody>
+    </MudSimpleTable>
+
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Neue Version</MudText>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+        <MudDatePicker Label="Gültig ab" @bind-Date="_validFrom" DateFormat="dd.MM.yyyy" Editable="true" ShowWeekNumbers="true"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:10rem" />
+        @foreach (var day in Days)
+        {
+            <MudNumericField T="decimal" Label="@DayName(day)" Value="_hours[Index(day)]" ValueChanged="v => _hours[Index(day)] = v"
+                             Min="0" Max="24" Step="0.5m" Format="0.##" HideSpinButtons="true"
+                             Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:4.5rem" />
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSchedule" Disabled="_validFrom is null">Speichern</MudButton>
+    </MudStack>
+    <MudText Typo="Typo.caption" Class="zw-muted">Stunden je Tag, z. B. 7,5. Gleiches Gültig-ab überschreibt die bestehende Version.</MudText>
+</MudPaper>
+
+@code {
+    private static readonly DayOfWeek[] Days =
+        [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday];
+
+    private List<WorkSchedule> _schedules = [];
+    private DateTime? _startDate;
+    private decimal _startHours;
+    private DateTime? _validFrom;
+    private readonly decimal[] _hours = new decimal[7];
+
+    private static int Index(DayOfWeek day) => ((int)day + 6) % 7;
+
+    private static string DayName(DayOfWeek day) => System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[(int)day].TrimEnd('.');
+
+    protected override async Task OnInitializedAsync()
+    {
+        var start = await Overtime.GetStartAsync();
+        _startDate = start.Date.ToDateTime(TimeOnly.MinValue);
+        _startHours = (decimal)start.Balance.TotalHours;
+        await LoadSchedulesAsync();
+        Edit(_schedules.FirstOrDefault() ?? WorkSchedule.Default);
+        _validFrom = Clock.Today.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private async Task LoadSchedulesAsync() => _schedules = await Overtime.GetSchedulesAsync();
+
+    private void Edit(WorkSchedule schedule)
+    {
+        foreach (var day in Days)
+            _hours[Index(day)] = (decimal)schedule[day].TotalHours;
+        if (schedule.ValidFrom != DateOnly.MinValue)
+            _validFrom = schedule.ValidFrom.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private static TimeSpan ToSpan(decimal hours) => TimeSpan.FromMinutes(Math.Round((double)hours * 60));
+
+    private async Task SaveStart()
+    {
+        await Overtime.SaveStartAsync(DateOnly.FromDateTime(_startDate!.Value), ToSpan(_startHours));
+        Snackbar.Add("Überstundenkonto gespeichert.", Severity.Success);
+    }
+
+    private async Task SaveSchedule()
+    {
+        var schedule = new WorkSchedule { ValidFrom = DateOnly.FromDateTime(_validFrom!.Value) };
+        foreach (var day in Days)
+            schedule[day] = ToSpan(Math.Clamp(_hours[Index(day)], 0, 24));
+        await Overtime.SaveScheduleAsync(schedule);
+        await LoadSchedulesAsync();
+        Snackbar.Add("Soll-Arbeitszeit gespeichert.", Severity.Success);
+    }
+
+    private async Task Delete(WorkSchedule schedule)
+    {
+        if (await Dialogs.ShowMessageBoxAsync("Version löschen", $"Soll-Arbeitszeit ab {schedule.ValidFrom:dd.MM.yyyy} wirklich löschen?",
+                yesText: "Löschen", cancelText: "Abbrechen") != true)
+            return;
+        await Overtime.DeleteScheduleAsync(schedule.Id);
+        await LoadSchedulesAsync();
+    }
+}

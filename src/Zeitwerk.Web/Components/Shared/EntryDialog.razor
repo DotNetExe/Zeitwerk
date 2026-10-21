@@ -25,6 +25,18 @@
             {
                 <MudSwitch T="bool" @bind-Value="_stillOpen" Color="Color.Primary" Label="Läuft noch (offener Eintrag)" />
             }
+            @foreach (var partner in _mergePartners)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Icon="@Icons.Material.Filled.MergeType">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <span>
+                            Grenzt direkt an einen Eintrag mit gleicher Arbeit
+                            (@Clock.ToLocal(partner.Start).ToString("HH:mm") – @Clock.ToLocal(partner.End!.Value).ToString("HH:mm")).
+                        </span>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" OnClick="() => Merge(partner)">Zusammenführen</MudButton>
+                    </MudStack>
+                </MudAlert>
+            }
             @if (_error is not null)
             {
                 <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
@@ -34,8 +46,13 @@
     <DialogActions>
         @if (Entry is not null)
         {
-            <MudButton Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="Delete" Class="mr-auto">Löschen</MudButton>
+            <MudButton Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="Delete">Löschen</MudButton>
         }
+        @if (Entry is not null && SplitMergeRules.SplitPoints(Entry).Count > 0)
+        {
+            <MudButton StartIcon="@Icons.Material.Filled.ContentCut" OnClick="Split">Teilen</MudButton>
+        }
+        <MudSpacer />
         <MudButton OnClick="() => MudDialog.Cancel()">Abbrechen</MudButton>
         <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_project is null">Speichern</MudButton>
     </DialogActions>
@@ -50,6 +67,10 @@
     /// <summary>Vorbelegtes Datum für neue Einträge.</summary>
     [Parameter] public DateOnly Date { get; set; }
 
+    /// <summary>Vorbelegter Beginn und vorbelegtes Ende für neue Einträge, z. B. aus einer Lücke.</summary>
+    [Parameter] public DateTimeOffset? Start { get; set; }
+    [Parameter] public DateTimeOffset? End { get; set; }
+
     private List<Project> _projects = [];
     private Project? _project;
     private string? _activity;
@@ -57,6 +78,7 @@
     private TimeSpan? _start, _end;
     private bool _stillOpen;
     private string? _error;
+    private List<TimeEntry> _mergePartners = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -64,6 +86,8 @@
         if (Entry is null)
         {
             _date = Date.ToDateTime(TimeOnly.MinValue);
+            _start = Start is { } s ? Clock.ToLocal(s).TimeOfDay : null;
+            _end = End is { } e ? Clock.ToLocal(e).TimeOfDay : null;
             return;
         }
 
@@ -77,6 +101,7 @@
         _start = start.TimeOfDay;
         _end = Entry.End is { } end ? Clock.ToLocal(end).TimeOfDay : null;
         _stillOpen = Entry.IsOpen;
+        _mergePartners = await Entries.GetMergePartnersAsync(Entry);
     }
 
     private async Task Save()
@@ -100,6 +125,21 @@
         }
 
         _error = await Entries.SaveAsync(Entry?.Id ?? 0, _project.Id, _activity, start, end);
+        if (_error is null)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private async Task Split()
+    {
+        var parameters = new DialogParameters<SplitDialog> { { d => d.Entry, Entry! } };
+        var dialog = await Dialogs.ShowAsync<SplitDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false })
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private async Task Merge(TimeEntry partner)
+    {
+        _error = await Entries.MergeAsync(Entry!.Id, partner.Id);
         if (_error is null)
             MudDialog.Close(DialogResult.Ok(true));
     }

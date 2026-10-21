@@ -17,6 +17,16 @@ internal sealed class TimerHarness(TimeZoneInfo? zone = null, int toleranceSecon
 
     public void Stop(string at) => Apply(_engine.Stop(State, T(at)));
 
+    public void StopAt(string end, string now, bool restart = false) =>
+        Apply(_engine.StopAt(State, T(end), T(now), restart));
+
+    public string? ValidateStopAt(string end, string now) => TimerEngine.ValidateStopAt(State, T(end), T(now));
+
+    public bool IsForgotten(string now) => _engine.IsForgotten(Open!, T(now));
+
+    public DateTimeOffset SuggestForgottenEnd(string now, TimeSpan? typical = null) =>
+        _engine.SuggestForgottenEnd(Open!, typical, T(now));
+
     public TimeEntry? Open => Entries.SingleOrDefault(e => e.IsOpen);
 
     /// <summary>Alle Einträge als "Projekt Beginn-Ende[ Tätigkeit]", nach Beginn sortiert.</summary>

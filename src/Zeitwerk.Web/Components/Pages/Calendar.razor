@@ -2,13 +2,14 @@
 @page "/kalender/{MonthText}"
 @implements IDisposable
 @inject EntryService Entries
+@inject OvertimeService Overtime
 @inject ChangeNotifier Notifier
 @inject Clock Clock
 @inject NavigationManager Nav
 
 <PageTitle>Kalender @_month.ToString("MMMM yyyy") – Zeitwerk</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4" Wrap="Wrap.Wrap">
     <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="() => Go(_month.AddMonths(-1))" aria-label="Vorheriger Monat" />
     <MudText Typo="Typo.h5" Class="zw-day-title">@_month.ToString("MMMM yyyy")</MudText>
     <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="() => Go(_month.AddMonths(1))" aria-label="Nächster Monat" />
@@ -18,6 +19,19 @@
     }
     <MudSpacer />
     <MudText Typo="Typo.h6">Monat: <b>@Format.Duration(_monthTotal)</b> h</MudText>
+    @if (_monthBalance is { Days: > 0 } monthBalance)
+    {
+        <MudText Typo="Typo.body2" Class="zw-muted zw-nowrap" title="Tage ab Kontostart bis heute">
+            Soll @Format.Duration(monthBalance.Target) · Ist @Format.Duration(monthBalance.Actual) ·
+            <span class="@Format.BalanceClass(monthBalance.Delta)">@Format.Balance(monthBalance.Delta)</span>
+        </MudText>
+    }
+    <MudTooltip Text="@($"Überstundenkonto seit {_account?.Start:dd.MM.yyyy}, Stand heute")">
+        <MudChip T="string" Variant="Variant.Outlined" Class="@("zw-balance-chip " + Format.BalanceClass(_balance))"
+                 Icon="@Icons.Material.Filled.AccountBalance" OnClick="@(() => Nav.NavigateTo("einstellungen"))">
+            Saldo @Format.Balance(_balance)
+        </MudChip>
+    </MudTooltip>
 </MudStack>
 
 <div class="zw-calendar">
@@ -30,16 +44,40 @@
     @for (var week = _gridStart; week < _gridEnd; week = week.AddDays(7))
     {
         var weekTotal = TimeSpan.Zero;
+        var monday = week;
         @for (var i = 0; i < 7; i++)
         {
             var day = week.AddDays(i);
             var parts = _byDay.GetValueOrDefault(day) ?? [];
             var total = parts.Aggregate(TimeSpan.Zero, (acc, p) => acc + p.Duration);
             weekTotal += total;
+            var absence = _account?.AbsenceOn(day);
             var css = "zw-calendar-day" + (day.Month != _month.Month ? " zw-other-month" : "")
-                      + (day == Clock.Today ? " zw-today" : "") + (i >= 5 ? " zw-weekend" : "");
+                      + (day == Clock.Today ? " zw-today" : "") + (i >= 5 ? " zw-weekend" : "")
+                      + (absence is { } a ? " zw-absent zw-absent-" + a.ToString().ToLowerInvariant() : "");
             <div class="@css" @onclick="@(() => Nav.NavigateTo($"tag/{day:yyyy-MM-dd}"))">
-                <div class="zw-calendar-daynum">@day.Day</div>
+                <div class="zw-calendar-dayhead">
+                    <span class="zw-calendar-daynum">@day.Day</span>
+                    @if (absence is { } kind)
+                    {
+                        <span class="zw-absence-label" title="@Absence.Label(kind)">@Absence.Label(kind)</span>
+                    }
+                    <div class="zw-absence-menu" @onclick:stopPropagation="true">
+                        <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Dense="true" aria-label="Abwesenheit setzen">
+                            @foreach (var option in Enum.GetValues<AbsenceKind>())
+                            {
+                                <MudMenuItem OnClick="() => SetAbsence(day, option)" Icon="@(absence == option ? Icons.Material.Filled.Check : null)">
+                                    @Absence.Label(option)
+                                </MudMenuItem>
+                            }
+                            @if (absence is not null)
+                            {
+                                <MudDivider />
+                                <MudMenuItem OnClick="() => SetAbsence(day, null)">Keine Abwesenheit</MudMenuItem>
+                            }
+                        </MudMenu>
+                    </div>
+                </div>
                 @if (total > TimeSpan.Zero)
                 {
                     <div class="zw-calendar-total">@Format.Duration(total)</div>
@@ -52,11 +90,17 @@
                 }
             </div>
         }
-        <div class="zw-calendar-week">
+        var weekBalance = _account?.Period(week, week.AddDays(7), Clock.Today, _actual);
+        <div class="zw-calendar-week zw-clickable" @onclick="@(() => Nav.NavigateTo(Week.PathFor(monday)))" title="Wochenansicht öffnen">
             <span class="zw-muted">KW @System.Globalization.ISOWeek.GetWeekOfYear(week.ToDateTime(TimeOnly.MinValue))</span>
             @if (weekTotal > TimeSpan.Zero)
             {
                 <b>@Format.Duration(weekTotal)</b>
+            }
+            @if (weekBalance is { Days: > 0 })
+            {
+                <span class="zw-muted" title="Soll der Tage ab Kontostart bis heute">Soll @Format.Duration(weekBalance.Target)</span>
+                <span class="@Format.BalanceClass(weekBalance.Delta)">@Format.Balance(weekBalance.Delta)</span>
             }
         </div>
     }
@@ -70,6 +114,10 @@
     private DateOnly _month, _gridStart, _gridEnd;
     private Dictionary<DateOnly, List<ProjectShare>> _byDay = [];
     private TimeSpan _monthTotal;
+    private OvertimeAccount? _account;
+    private Dictionary<DateOnly, TimeSpan> _actual = [];
+    private PeriodBalance? _monthBalance;
+    private TimeSpan _balance;
 
     protected override void OnInitialized() => Notifier.Changed += OnChanged;
 
@@ -104,11 +152,19 @@
         _monthTotal = _byDay.Where(kv => kv.Key.Month == _month.Month && kv.Key.Year == _month.Year)
             .SelectMany(kv => kv.Value)
             .Aggregate(TimeSpan.Zero, (acc, s) => acc + s.Duration);
+
+        _account = await Overtime.GetAccountAsync();
+        var today = Clock.Today;
+        _actual = _account.Start <= today ? await Entries.GetDayTotalsAsync(_account.Start, today.AddDays(1)) : [];
+        _monthBalance = _account.Period(_month, _month.AddMonths(1), today, _actual);
+        _balance = _account.Balance(today, _actual);
     }
 
     private static DateOnly FirstOfMonth(DateOnly d) => new(d.Year, d.Month, 1);
 
     private void Go(DateOnly month) => Nav.NavigateTo($"kalender/{month:yyyy-MM}");
+
+    private Task SetAbsence(DateOnly day, AbsenceKind? kind) => Overtime.SetAbsenceAsync(day, kind);
 
     private void OnChanged() => InvokeAsync(async () =>
     {

@@ -26,6 +26,13 @@
                 <MudColorPicker @bind-Text="_color" Label="Eigene Farbe" ColorPickerView="ColorPickerView.Spectrum"
                                 ShowAlpha="false" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
             </div>
+            @{ var customer = Customers.FirstOrDefault(c => c.Id == _customerId); }
+            <MudTextField @bind-Value="_ticketUrl" Label="Ticket-URL (optional)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Placeholder="@(customer?.TicketUrlTemplate ?? "https://jira.example.com/browse/{ticket}")"
+                          HelperText="@(customer?.TicketUrlTemplate is null ? "Leer = keine Ticket-Links (Kunde hat keine Ticket-URL)" : "Leer = Ticket-URL des Kunden")" />
+            <MudTextField @bind-Value="_ticketPattern" Label="Ticket-Muster (regulärer Ausdruck)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Placeholder="@(customer?.TicketPattern ?? TicketLinks.DefaultPattern)"
+                          HelperText="@($"Leer = {(customer?.TicketPattern is null ? "Standard" : "Muster des Kunden")}: {customer?.TicketPattern ?? TicketLinks.DefaultPattern}")" />
             @if (_error is not null)
             {
                 <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
@@ -47,19 +54,23 @@
     private int _customerId;
     private string _name = "";
     private string _color = ProjectColors.Palette[0];
+    private string? _ticketUrl;
+    private string? _ticketPattern;
     private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
         _customerId = Project?.CustomerId ?? CustomerId;
         _name = Project?.Name ?? "";
+        _ticketUrl = Project?.TicketUrlTemplate;
+        _ticketPattern = Project?.TicketPattern;
         _color = Project?.Color ?? await MasterData.SuggestColorAsync();
     }
 
     private async Task Save()
     {
         var color = _color.Length > 7 ? _color[..7] : _color; // Alpha-Anteil verwerfen
-        _error = await MasterData.SaveProjectAsync(Project?.Id ?? 0, _customerId, _name, color);
+        _error = await MasterData.SaveProjectAsync(Project?.Id ?? 0, _customerId, _name, color, _ticketUrl, _ticketPattern);
         if (_error is null)
             MudDialog.Close(DialogResult.Ok(true));
     }

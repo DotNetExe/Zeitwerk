@@ -1,0 +1,136 @@
+@* Globale Tastenkürzel (Tastenerkennung in wwwroot/shortcuts.js) und Command-Palette. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+@inject TimerService Timer
+@inject EntryService Entries
+@inject MasterDataService MasterData
+@inject Clock Clock
+@inject ISnackbar Snackbar
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Shortcuts>? _self;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        _self = DotNetObjectReference.Create(this);
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./shortcuts.js");
+        await _module.InvokeVoidAsync("register", _self);
+    }
+
+    [JSInvokable]
+    public Task Run(string action)
+    {
+        Func<Task> handler = action switch
+        {
+            "palette" => OpenPalette,
+            "stop" => Stop,
+            "today" => () => GoToDay(Clock.Today),
+            "prev" => () => CurrentDay() is { } day ? GoToDay(day.AddDays(-1)) : Task.CompletedTask,
+            "next" => () => CurrentDay() is { } day ? GoToDay(day.AddDays(1)) : Task.CompletedTask,
+            "help" => ShowHelp,
+            _ => () => Task.CompletedTask,
+        };
+        return handler();
+    }
+
+    private async Task OpenPalette()
+    {
+        var open = await Timer.GetOpenAsync();
+        var recent = await Entries.GetRecentWorkAsync();
+        var projects = await MasterData.GetActiveProjectsAsync();
+        var verb = open is null ? "Start" : "Wechseln";
+
+        var items = new List<PaletteItem>();
+        foreach (var work in recent.Where(w => open?.IsSameWork(w.Project.Id, w.Activity) != true))
+            items.Add(new PaletteItem($"Zuletzt · {verb}", work.Project.DisplayName, work.Activity,
+                Icons.Material.Filled.History, work.Project.Color, () => SwitchTo(work.Project.Id, work.Activity)));
+        if (open is not null)
+            items.Add(Command("Stopp", Icons.Material.Filled.Stop, Stop, "anhalten beenden pause"));
+        items.Add(Command("Heute", Icons.Material.Filled.Today, () => GoToDay(Clock.Today), "tag tagesansicht"));
+        items.Add(Command("Gehe zu Kalender", Icons.Material.Filled.CalendarMonth, () => Navigate("kalender"), "monat"));
+        items.Add(Command("Gehe zu Stammdaten", Icons.Material.Filled.FolderOpen, () => Navigate("stammdaten"), "kunden projekte"));
+        items.Add(Command("Gehe zu Export", Icons.Material.Filled.FileDownload, () => Navigate("export"), "csv"));
+        items.Add(Command("Tastenkürzel anzeigen", Icons.Material.Filled.Keyboard, ShowHelp, "hilfe"));
+        foreach (var project in projects.Where(p => !recent.Any(w => w.Project.Id == p.Id && w.Activity is null)))
+            items.Add(new PaletteItem($"Projekt · {verb}", project.DisplayName, null,
+                Icons.Material.Filled.Folder, project.Color, () => SwitchTo(project.Id, null)));
+
+        var dialog = await Dialogs.ShowAsync<CommandPalette>(null,
+            new DialogParameters<CommandPalette> { { p => p.Items, items } },
+            new DialogOptions { NoHeader = true, Position = DialogPosition.TopCenter, MaxWidth = MaxWidth.Small, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: PaletteItem chosen })
+            await chosen.Execute();
+    }
+
+    private static PaletteItem Command(string title, string icon, Func<Task> execute, string keywords) =>
+        new("Befehl", title, null, icon, null, execute) { Keywords = keywords };
+
+    // Über den TimerService, damit die Raster-Regeln (R1–R12) gelten.
+    private Task<bool> SwitchTo(int projectId, string? activity) => Try(() => Timer.SwitchToAsync(projectId, activity));
+
+    private async Task Stop()
+    {
+        if (await Timer.GetOpenAsync() is null)
+        {
+            Snackbar.Add("Kein Timer aktiv.", Severity.Info);
+            return;
+        }
+        if (await Try(Timer.StopAsync))
+            Snackbar.Add("Timer gestoppt.", Severity.Normal);
+    }
+
+    private async Task<bool> Try(Func<Task> action)
+    {
+        try
+        {
+            await action();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler: {ex.Message}", Severity.Error);
+            return false;
+        }
+    }
+
+    private Task ShowHelp() => Dialogs.ShowAsync<ShortcutHelp>((string?)null, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+
+    /// <summary>Der angezeigte Tag, falls die Tagesansicht offen ist.</summary>
+    private DateOnly? CurrentDay()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+        if (path == "")
+            return Clock.Today;
+        return path.StartsWith("tag/") && DateOnly.TryParseExact(path[4..], "yyyy-MM-dd", out var day) ? day : null;
+    }
+
+    private Task GoToDay(DateOnly date) => Navigate(date == Clock.Today ? "" : $"tag/{date:yyyy-MM-dd}");
+
+    private Task Navigate(string href)
+    {
+        Nav.NavigateTo(href);
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("unregister");
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Verbindung schon weg, nichts aufzuräumen.
+            }
+        }
+        _self?.Dispose();
+    }
+}

@@ -1,0 +1,78 @@
+@* R16: Ende für einen vergessenen Timer nachtragen. *@
+@inject TimerService Timer
+@inject Clock Clock
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Vergessen zu stoppen?</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Class="zw-dialog-body">
+            <MudText>
+                Timer läuft seit @Format.Relative(Clock.ToLocal(Entry.Start), Clock.Today) – wann hast du aufgehört?
+            </MudText>
+            <MudText Typo="Typo.caption" Class="zw-muted">
+                @Entry.Project.DisplayName@(Entry.Activity is null ? "" : $" · {Entry.Activity}")
+            </MudText>
+            <MudStack Row="true" Spacing="3">
+                <MudDatePicker Label="Datum" @bind-Date="_date" Variant="Variant.Outlined" Margin="Margin.Dense"
+                               DateFormat="dd.MM.yyyy" ShowWeekNumbers="true"
+                               MinDate="@Clock.ToLocal(Entry.Start).Date" MaxDate="@Clock.ToLocal(Clock.UtcNow).Date" />
+                <MudTimePicker Label="Ende" @bind-Time="_end" MinuteSelectionStep="5" AmPm="false"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Editable="true" />
+            </MudStack>
+            <MudSwitch T="bool" @bind-Value="_restart" Color="Color.Primary" Label="Ab jetzt neu starten (gleiches Projekt und Tätigkeit)" />
+            <MudText Typo="Typo.caption" Class="zw-muted">Einträge über Mitternacht werden aufgeteilt.</MudText>
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_busy">Stoppen</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>Der offene Zeiteintrag inklusive Projekt.</summary>
+    [Parameter, EditorRequired] public TimeEntry Entry { get; set; } = null!;
+
+    private DateTime? _date;
+    private TimeSpan? _end;
+    private bool _restart;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var suggested = Clock.ToLocal(await Timer.SuggestForgottenEndAsync(Entry));
+        _date = suggested.Date;
+        _end = suggested.TimeOfDay;
+    }
+
+    private async Task Save()
+    {
+        _error = null;
+        if (_date is null || _end is null)
+        {
+            _error = "Bitte Datum und Ende angeben.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            _error = await Timer.StopAtAsync(Clock.ToUtc(_date.Value + _end.Value), _restart);
+        }
+        finally
+        {
+            _busy = false;
+        }
+        if (_error is null)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+}

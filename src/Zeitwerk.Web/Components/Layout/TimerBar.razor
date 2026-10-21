@@ -5,6 +5,9 @@
 @inject ChangeNotifier Notifier
 @inject Clock Clock
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<BrowserTab Status="TabStatus.For(_open, _now, Clock.ToLocal)" />
 
 <MudPaper Elevation="0" Class="zw-timerbar" Square="true">
     <div class="zw-timerbar-current">
@@ -19,6 +22,10 @@
             <span class="zw-pulse @(onHold ? "zw-pulse-hold" : "")" style="--c:@_open.Project.Color"></span>
             <div class="zw-current-text">
                 <MudText Typo="Typo.subtitle2">@_open.Project.DisplayName</MudText>
+                @if (ActivityText.HasLinks(_open.Activity, _open.Project))
+                {
+                    <div><MudText Typo="Typo.caption"><ActivityText Activity="@_open.Activity" Project="_open.Project" /></MudText></div>
+                }
                 @if (onHold)
                 {
                     <MudText Typo="Typo.caption" Color="Color.Warning">
@@ -44,11 +51,14 @@
                        ValueChanged="SaveOpenActivity" Class="mt-3" />
     }
 
-    @if (_open is not null && _open.Duration(_now) > TimerSettings.LongRunningThreshold)
+    @if (_open is not null && new TimerEngine(Clock.TimerSettings).IsForgotten(_open, _now))
     {
         <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
-            Der Timer läuft seit über @((int)TimerSettings.LongRunningThreshold.TotalHours) Stunden – vergessen zu stoppen?
-            Einträge lassen sich in der Tagesansicht korrigieren.
+            Timer läuft seit @Format.Relative(Clock.ToLocal(_open.Start), Clock.Today) – vergessen zu stoppen?
+            <MudButton Variant="Variant.Text" Color="Color.Warning" Size="Size.Small" Class="ml-1"
+                       StartIcon="@Icons.Material.Filled.EditCalendar" OnClick="OpenForgotStop" Disabled="_busy">
+                Ende nachtragen…
+            </MudButton>
         </MudAlert>
     }
 
@@ -75,7 +85,7 @@
                          Disabled="@(active || _busy)" OnClick="@(() => SwitchTo(work.Project.Id, work.Activity))"
                          Style="@($"border-color:{work.Project.Color}")">
                     <ProjectDot Color="@work.Project.Color" />
-                    <span class="ml-1">@work.Project.Name@(work.Activity is null ? "" : $" · {work.Activity}")</span>
+                    <span class="ml-1">@work.Project.Name@if (work.Activity is not null){<text> · </text><ActivityText Activity="@work.Activity" Project="work.Project" />}</span>
                 </MudChip>
             }
         </div>
@@ -132,6 +142,12 @@
     private Task SwitchTo(int projectId, string? activity) => Run(() => Timer.SwitchToAsync(projectId, activity));
 
     private Task Stop() => Run(Timer.StopAsync);
+
+    private async Task OpenForgotStop()
+    {
+        var parameters = new DialogParameters<ForgotStopDialog> { { d => d.Entry, _open! } };
+        await Dialogs.ShowAsync<ForgotStopDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
 
     private async Task SaveOpenActivity(string? activity)
     {

@@ -47,6 +47,35 @@ public sealed class TimerService(IDbContextFactory<ZeitwerkDbContext> dbFactory,
     public Task StopAsync() =>
         RunAsync((engine, state, now) => engine.Stop(state, now));
 
+    /// <summary>R16: Vorschlag für das Ende eines vergessenen Timers aus der typischen (Median-)Dauer der
+    /// letzten abgeschlossenen Einträge desselben Projekts.</summary>
+    public async Task<DateTimeOffset> SuggestForgottenEndAsync(TimeEntry open)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var recent = await db.TimeEntries.AsNoTracking()
+            .Where(e => e.ProjectId == open.ProjectId && e.End != null)
+            .OrderByDescending(e => e.End)
+            .Take(20)
+            .Select(e => new { e.Start, End = e.End!.Value })
+            .ToListAsync();
+        var durations = recent.Select(e => e.End - e.Start).Order().ToList();
+        TimeSpan? typical = durations.Count == 0 ? null : durations[durations.Count / 2];
+        return new TimerEngine(clock.TimerSettings).SuggestForgottenEnd(open, typical, clock.UtcNow);
+    }
+
+    /// <summary>R16: Offenen Eintrag mit nachgetragenem Ende stoppen, optional ab jetzt neu starten.</summary>
+    /// <returns>Fehlermeldung oder <c>null</c> bei Erfolg.</returns>
+    public async Task<string?> StopAtAsync(DateTimeOffset end, bool restart)
+    {
+        string? error = null;
+        await RunAsync((engine, state, now) =>
+        {
+            error = TimerEngine.ValidateStopAt(state, end, now);
+            return error is null ? engine.StopAt(state, end, now, restart) : new TimerChanges();
+        });
+        return error;
+    }
+
     /// <summary>R13: Tätigkeit des offenen Eintrags ändern, ohne zu wechseln.</summary>
     public async Task UpdateOpenActivityAsync(string? activity)
     {

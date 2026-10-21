@@ -25,6 +25,8 @@ builder.Services.AddSingleton<ChangeNotifier>();
 builder.Services.AddScoped<TimerService>();
 builder.Services.AddScoped<EntryService>();
 builder.Services.AddScoped<MasterDataService>();
+builder.Services.AddScoped<ReportService>();
+builder.Services.AddScoped<OvertimeService>();
 
 var app = builder.Build();
 

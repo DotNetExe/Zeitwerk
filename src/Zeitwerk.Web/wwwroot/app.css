@@ -47,56 +47,81 @@ html, body {
     vertical-align: middle;
 }
 
-/* Timer-Leiste */
+/* Spalten-Layout: links Timer, rechts Seiteninhalt */
+.zw-shell {
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    align-items: start;
+}
+
+.zw-content {
+    min-width: 0;
+    padding: 24px 32px;
+}
+
+/* Timer-Spalte */
 .zw-timerbar-host {
+    /* Die App-Bar ist "Dense" und damit nur 3/4 von --mud-appbar-height hoch. */
+    --zw-appbar-height: calc(var(--mud-appbar-height) - var(--mud-appbar-height) / 4);
     position: sticky;
-    top: var(--mud-appbar-height);
+    top: var(--zw-appbar-height);
+    height: calc(100vh - var(--zw-appbar-height));
+    overflow-y: auto;
+    border-right: 1px solid var(--mud-palette-lines-default);
+    background: var(--mud-palette-surface);
     z-index: 5;
 }
 
 .zw-timerbar {
-    padding: 12px 24px;
-    border-bottom: 1px solid var(--mud-palette-lines-default);
-    background: var(--mud-palette-surface);
+    padding: 20px;
+    background: transparent;
 }
 
-.zw-timerbar-current,
-.zw-timerbar-switch,
-.zw-recent {
+.zw-timerbar-current {
     display: flex;
     align-items: center;
     gap: 12px;
-    flex-wrap: wrap;
 }
 
 .zw-timerbar-switch {
-    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .zw-recent {
-    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
     gap: 4px;
+    margin-top: 16px;
 }
 
 .zw-current-text {
-    min-width: 14rem;
-}
-
-.zw-activity {
-    flex: 1 1 14rem;
-    max-width: 22rem;
-}
-
-.zw-project {
-    flex: 1 1 18rem;
-    max-width: 28rem;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .zw-clock {
     font-variant-numeric: tabular-nums;
-    min-width: 7rem;
     text-align: right;
-    margin-left: auto;
+}
+
+@media (max-width: 960px) {
+    .zw-shell {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .zw-timerbar-host {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--mud-palette-lines-default);
+    }
+
+    .zw-content {
+        padding: 16px;
+    }
 }
 
 .zw-pulse {

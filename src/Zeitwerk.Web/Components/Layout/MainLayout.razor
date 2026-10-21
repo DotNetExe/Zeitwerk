@@ -15,12 +15,14 @@
         <MudNavLink Href="export" Icon="@Icons.Material.Filled.FileDownload" Class="zw-navlink">Export</MudNavLink>
     </MudAppBar>
     <MudMainContent>
-        <div class="zw-timerbar-host">
-            <TimerBar />
+        <div class="zw-shell">
+            <aside class="zw-timerbar-host">
+                <TimerBar />
+            </aside>
+            <main class="zw-content">
+                @Body
+            </main>
         </div>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="py-6">
-            @Body
-        </MudContainer>
     </MudMainContent>
 </MudLayout>
 

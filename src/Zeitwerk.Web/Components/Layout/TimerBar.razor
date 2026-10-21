@@ -30,8 +30,6 @@
                     <MudText Typo="Typo.caption" Class="zw-muted">seit @Clock.ToLocal(_open.Start).ToString("HH:mm")</MudText>
                 }
             </div>
-            <ActivityField ProjectId="_open.ProjectId" Label="Tätigkeit (aktuell)" Value="@_openActivity"
-                           ValueChanged="SaveOpenActivity" Class="zw-activity" />
             <MudText Typo="Typo.h5" Class="zw-clock">@(onHold ? "0:00:00" : Format.Running(_open.Duration(_now)))</MudText>
             <MudTooltip Text="Stoppen (Ende wird auf 5 Minuten aufgerundet)">
                 <MudIconButton Icon="@Icons.Material.Filled.Stop" Color="Color.Error" Variant="Variant.Filled"
@@ -39,6 +37,12 @@
             </MudTooltip>
         }
     </div>
+
+    @if (_open is not null)
+    {
+        <ActivityField ProjectId="_open.ProjectId" Label="Tätigkeit (aktuell)" Value="@_openActivity"
+                       ValueChanged="SaveOpenActivity" Class="mt-3" />
+    }
 
     @if (_open is not null && _open.Duration(_now) > TimerSettings.LongRunningThreshold)
     {
@@ -48,10 +52,12 @@
         </MudAlert>
     }
 
+    <MudDivider Class="my-4" />
+
     <div class="zw-timerbar-switch">
-        <ProjectPicker Projects="_projects" @bind-Value="_nextProject" Label="@(_open is null ? "Starten mit Projekt" : "Wechseln zu Projekt")" Class="zw-project" />
-        <ActivityField ProjectId="_nextProject?.Id" @bind-Value="_nextActivity" OnEnter="SwitchToSelection" Class="zw-activity" />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SwitchToSelection"
+        <ProjectPicker Projects="_projects" @bind-Value="_nextProject" Label="@(_open is null ? "Starten mit Projekt" : "Wechseln zu Projekt")" />
+        <ActivityField ProjectId="_nextProject?.Id" @bind-Value="_nextActivity" OnEnter="SwitchToSelection" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SwitchToSelection" FullWidth="true"
                    Disabled="@(_nextProject is null || _busy)"
                    StartIcon="@(_open is null ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.SwapHoriz)">
             @(_open is null ? "Start" : "Wechseln")

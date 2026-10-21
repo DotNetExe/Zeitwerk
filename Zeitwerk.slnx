@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Zeitwerk.Web/Zeitwerk.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Zeitwerk.Tests/Zeitwerk.Tests.csproj" />
+  </Folder>
+</Solution>

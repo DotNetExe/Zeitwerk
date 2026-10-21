@@ -22,10 +22,12 @@ Danach läuft die App unter <http://127.0.0.1:8080> (nur lokal erreichbar).
 
 ## Entwicklung
 
-Voraussetzungen: .NET 10 SDK, ein PostgreSQL auf `localhost:5432` (z. B. `docker compose up -d db` mit
-zusätzlichem Port-Mapping) mit Benutzer/Passwort `zeitwerk`.
+Voraussetzungen: .NET 10 SDK und Docker. Die Entwicklungsdatenbank läuft separat vom Betriebs-Stack
+(eigenes Compose-Projekt `zeitwerk-dev`, eigenes Volume) auf `127.0.0.1:5433`; `appsettings.Development.json`
+und `dotnet ef` sind darauf eingestellt.
 
 ```bash
+docker compose -f docker-compose.dev.yml up -d
 dotnet test
 dotnet run --project src/Zeitwerk.Web
 dotnet tool restore && dotnet ef migrations add <Name> -p src/Zeitwerk.Web -o Data/Migrations

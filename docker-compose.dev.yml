@@ -1,0 +1,26 @@
+# Nur PostgreSQL für die lokale Entwicklung (App läuft per dotnet run / IDE).
+# Start: docker compose -f docker-compose.dev.yml up -d
+# Port 5433, damit es nicht mit anderen lokalen Postgres-Instanzen kollidiert;
+# passt zum Connection-String in src/Zeitwerk.Web/appsettings.Development.json.
+name: zeitwerk-dev
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: zeitwerk
+      POSTGRES_USER: zeitwerk
+      POSTGRES_PASSWORD: zeitwerk
+    ports:
+      - "127.0.0.1:${ZEITWERK_DEV_DB_PORT:-5433}:5432"
+    volumes:
+      - zeitwerk-dev-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zeitwerk -d zeitwerk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  zeitwerk-dev-db:

@@ -8,6 +8,6 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<Zei
 {
     public ZeitwerkDbContext CreateDbContext(string[] args) =>
         new(new DbContextOptionsBuilder<ZeitwerkDbContext>()
-            .UseNpgsql("Host=localhost;Database=zeitwerk;Username=zeitwerk;Password=zeitwerk")
+            .UseNpgsql("Host=localhost;Port=5433;Database=zeitwerk;Username=zeitwerk;Password=zeitwerk") // docker-compose.dev.yml
             .Options);
 }

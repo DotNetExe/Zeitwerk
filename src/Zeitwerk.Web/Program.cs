@@ -46,13 +46,15 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapGet("/export.csv", async (DateOnly from, DateOnly to, int? customerId, int? projectId,
+app.MapGet("/export.csv", async (DateOnly from, DateOnly to, int? customerId, int? projectId, bool? perDay,
     IDbContextFactory<ZeitwerkDbContext> dbFactory, Clock clock) =>
 {
     await using var db = await dbFactory.CreateDbContextAsync();
     var entries = await CsvExport.LoadAsync(db, clock, new ExportFilter(from, to, customerId, projectId));
-    var csv = CsvExport.Encoding.GetBytes(CsvExport.Build(entries, clock.Zone));
-    return Results.File(csv, "text/csv; charset=utf-8", $"zeitwerk_{from:yyyy-MM-dd}_{to:yyyy-MM-dd}.csv");
+    var daily = perDay == true;
+    var csv = CsvExport.Encoding.GetBytes(daily ? CsvExport.BuildDaily(entries, clock.Zone) : CsvExport.Build(entries, clock.Zone));
+    return Results.File(csv, "text/csv; charset=utf-8",
+        $"zeitwerk_{from:yyyy-MM-dd}_{to:yyyy-MM-dd}{(daily ? "_tage" : "")}.csv");
 });
 
 app.Run();

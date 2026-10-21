@@ -34,6 +34,11 @@
             }
         </MudSelect>
 
+        <MudRadioGroup T="bool" @bind-Value="_perDay">
+            <MudRadio T="bool" Value="false" Color="Color.Primary" Dense="true">Einzelne Zeiteinträge</MudRadio>
+            <MudRadio T="bool" Value="true" Color="Color.Primary" Dense="true">Pro Tag und Projekt summiert</MudRadio>
+        </MudRadioGroup>
+
         <MudText Typo="Typo.body2" Class="zw-muted">
             @_count abgeschlossene Einträge · @Format.Duration(_sum) h
         </MudText>
@@ -52,6 +57,7 @@
     private List<Customer> _customers = [];
     private DateTime? _from, _to;
     private int? _customerId, _projectId;
+    private bool _perDay;
     private int _count;
     private TimeSpan _sum;
 
@@ -59,7 +65,8 @@
         ? null
         : $"export.csv?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}"
           + (_customerId is { } c ? $"&customerId={c}" : "")
-          + (_projectId is { } p ? $"&projectId={p}" : "");
+          + (_projectId is { } p ? $"&projectId={p}" : "")
+          + (_perDay ? "&perDay=true" : "");
 
     protected override async Task OnInitializedAsync()
     {

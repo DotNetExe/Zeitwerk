@@ -55,6 +55,38 @@ public static class CsvExport
         return sb.ToString();
     }
 
+    /// <summary>Eine Zeile je Tag, Kunde und Projekt; Tätigkeiten in Reihenfolge ihres ersten Auftretens.</summary>
+    public static string BuildDaily(IEnumerable<TimeEntry> entries, TimeZoneInfo zone)
+    {
+        var sb = new StringBuilder();
+        sb.Append("Datum;Dauer;Stunden;Kunde;Projekt;Tätigkeiten\r\n");
+        var days = entries
+            .Where(e => e.End is not null)
+            .OrderBy(e => e.Start)
+            // nach Id, weil AsNoTracking je Eintrag eigene Projekt-Instanzen liefert
+            .GroupBy(e => (Date: DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(e.Start, zone).DateTime), e.Project.Id))
+            .Select(g => (g.Key.Date, g.First().Project, Entries: g.ToList()))
+            .OrderBy(g => g.Date)
+            .ThenBy(g => g.Project.Customer.Name, StringComparer.Create(German, ignoreCase: true))
+            .ThenBy(g => g.Project.Name, StringComparer.Create(German, ignoreCase: true));
+        foreach (var day in days)
+        {
+            var duration = day.Entries.Aggregate(TimeSpan.Zero, (acc, e) => acc + (e.End!.Value - e.Start));
+            var activities = day.Entries.Select(e => e.Activity).OfType<string>().Where(a => a.Length > 0).Distinct();
+            string[] fields =
+            [
+                day.Date.ToString("dd.MM.yyyy", German),
+                FormatDuration(duration),
+                duration.TotalHours.ToString("0.00", German),
+                day.Project.Customer.Name,
+                day.Project.Name,
+                string.Join(", ", activities),
+            ];
+            sb.AppendJoin(';', fields.Select(Escape)).Append("\r\n");
+        }
+        return sb.ToString();
+    }
+
     public static string FormatDuration(TimeSpan d) => $"{(int)d.TotalHours:00}:{d.Minutes:00}";
 
     private static string Escape(string field) =>

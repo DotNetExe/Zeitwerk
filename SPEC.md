@@ -72,7 +72,10 @@ Eine Pause ist ein Stopp; die Lücke zwischen zwei Einträgen ist die Pause.
 - Einzelbuchungen, Filter: Zeitraum (Pflicht), Kunde/Projekt (optional); nur abgeschlossene Einträge
 - `;` als Trenner, UTF-8 **ohne** BOM, Dezimalkomma
 - Spalten: `Datum;Start;Ende;Dauer;Stunden;Kunde;Projekt;Tätigkeit` – Dauer als `hh:mm`, Stunden als `1,75`
+- Wahlweise pro Tag summiert: eine Zeile je Tag (lokale Zeit), Kunde und Projekt, sortiert nach Datum, Kunde, Projekt
+  - Spalten: `Datum;Dauer;Stunden;Kunde;Projekt;Tätigkeiten` – Tätigkeiten ohne Duplikate, mit `, ` verbunden,
+    in Reihenfolge ihres ersten Auftretens
 
 ## Bewusst später
 
-Aggregierter Export, Drag & Drop in der Zeitleiste, Abrechenbar-Flag.
+Weitere Aggregationen (z. B. pro Woche/Monat), Drag & Drop in der Zeitleiste, Abrechenbar-Flag.

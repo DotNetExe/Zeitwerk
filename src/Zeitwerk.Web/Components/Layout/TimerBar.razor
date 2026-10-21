@@ -146,6 +146,8 @@
         try
         {
             await action();
+            // Eigene Aktion: direkt neu laden statt sich allein auf die Benachrichtigung zu verlassen.
+            await LoadAsync();
         }
         catch (Exception ex)
         {

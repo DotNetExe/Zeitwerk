@@ -5,11 +5,25 @@ using Zeitwerk.Web.Domain;
 namespace Zeitwerk.Web.Services;
 
 /// <summary>Benachrichtigt alle offenen Ansichten (auch in anderen Tabs), wenn sich Zeiteinträge geändert haben.</summary>
-public sealed class ChangeNotifier
+public sealed class ChangeNotifier(ILogger<ChangeNotifier> logger)
 {
     public event Action? Changed;
 
-    public void NotifyChanged() => Changed?.Invoke();
+    /// <summary>Ruft jede Ansicht einzeln auf, damit eine fehlerhafte (z. B. aus einer getrennten Verbindung) die übrigen nicht blockiert.</summary>
+    public void NotifyChanged()
+    {
+        foreach (var handler in Changed?.GetInvocationList() ?? [])
+        {
+            try
+            {
+                ((Action)handler).Invoke();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Ansicht {View} konnte nicht benachrichtigt werden", handler.Target?.GetType().Name);
+            }
+        }
+    }
 }
 
 /// <summary>Führt Timer-Aktionen auf der Datenbank aus.</summary>

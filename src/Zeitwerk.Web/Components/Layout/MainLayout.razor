@@ -1,9 +1,31 @@
 ﻿@inherits LayoutComponentBase
 
-@Body
+<MudThemeProvider Theme="ZeitwerkTheme.Theme" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider CloseOnEscapeKey="true" />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="0" Dense="true" Class="zw-appbar">
+        <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
+        <MudText Typo="Typo.h6" Class="mr-6">Zeitwerk</MudText>
+        <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Today" Class="zw-navlink">Tag</MudNavLink>
+        <MudNavLink Href="kalender" Icon="@Icons.Material.Filled.CalendarMonth" Class="zw-navlink">Kalender</MudNavLink>
+        <MudNavLink Href="stammdaten" Icon="@Icons.Material.Filled.FolderOpen" Class="zw-navlink">Stammdaten</MudNavLink>
+        <MudNavLink Href="export" Icon="@Icons.Material.Filled.FileDownload" Class="zw-navlink">Export</MudNavLink>
+    </MudAppBar>
+    <MudMainContent>
+        <div class="zw-timerbar-host">
+            <TimerBar />
+        </div>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="py-6">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
+    Ein unerwarteter Fehler ist aufgetreten.
+    <a href="." class="reload">Neu laden</a>
     <span class="dismiss">🗙</span>
 </div>

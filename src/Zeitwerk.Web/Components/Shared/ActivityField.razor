@@ -1,0 +1,35 @@
+@* Freitext für die Tätigkeit mit Vorschlägen aus früheren Einträgen desselben Projekts. *@
+@inject EntryService Entries
+
+<MudAutocomplete T="string"
+                 Label="@Label"
+                 Value="Value"
+                 ValueChanged="ValueChanged"
+                 SearchFunc="Search"
+                 CoerceText="false"
+                 CoerceValue="true"
+                 Variant="Variant.Outlined"
+                 Margin="Margin.Dense"
+                 Placeholder="z. B. Ticketnummer"
+                 Clearable="true"
+                 OnKeyDown="OnKeyDown"
+                 OnBlur="OnBlur"
+                 Class="@Class" />
+
+@code {
+    [Parameter] public int? ProjectId { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Tätigkeit";
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Enter gedrückt.</summary>
+    [Parameter] public EventCallback OnEnter { get; set; }
+
+    [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
+
+    private async Task<IEnumerable<string>> Search(string? text, CancellationToken _) =>
+        ProjectId is { } id ? await Entries.GetActivitySuggestionsAsync(id, text) : [];
+
+    private Task OnKeyDown(KeyboardEventArgs e) => e.Key == "Enter" ? OnEnter.InvokeAsync() : Task.CompletedTask;
+}

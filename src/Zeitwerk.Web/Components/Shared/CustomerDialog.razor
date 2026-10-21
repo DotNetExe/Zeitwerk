@@ -1,0 +1,36 @@
+@inject MasterDataService MasterData
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Customer is null ? "Kunde anlegen" : "Kunde bearbeiten")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Immediate="true" OnKeyDown="@(e => e.Key == "Enter" ? Save() : Task.CompletedTask)" />
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3">@_error</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Speichern</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Customer? Customer { get; set; }
+
+    private string _name = "";
+    private string? _error;
+
+    protected override void OnInitialized() => _name = Customer?.Name ?? "";
+
+    private async Task Save()
+    {
+        _error = await MasterData.SaveCustomerAsync(Customer?.Id ?? 0, _name);
+        if (_error is null)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+}

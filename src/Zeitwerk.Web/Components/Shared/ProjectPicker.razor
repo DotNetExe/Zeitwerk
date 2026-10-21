@@ -1,0 +1,35 @@
+@* Projektauswahl mit Suche über "Kunde / Projekt". *@
+<MudAutocomplete T="Project"
+                 Label="@Label"
+                 Value="Value"
+                 ValueChanged="ValueChanged"
+                 SearchFunc="Search"
+                 ToStringFunc="@(p => p?.DisplayName)"
+                 Variant="Variant.Outlined"
+                 Margin="Margin.Dense"
+                 ResetValueOnEmptyText="true"
+                 OpenOnFocus="true"
+                 MaxItems="null"
+                 Required="Required"
+                 RequiredError="Bitte ein Projekt wählen."
+                 Class="@Class">
+    <ItemTemplate Context="p">
+        <ProjectDot Color="@p.Color" /> <span class="ml-2">@p.DisplayName</span>
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<Project> Projects { get; set; } = [];
+    [Parameter] public Project? Value { get; set; }
+    [Parameter] public EventCallback<Project?> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Projekt";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private Task<IEnumerable<Project>> Search(string? text, CancellationToken _)
+    {
+        var terms = (text ?? "").Split(' ', '/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var matches = Projects.Where(p => terms.All(t => p.DisplayName.Contains(t, StringComparison.OrdinalIgnoreCase)));
+        return Task.FromResult(matches);
+    }
+}

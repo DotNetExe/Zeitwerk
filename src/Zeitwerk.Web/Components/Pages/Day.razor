@@ -1,0 +1,152 @@
+@page "/"
+@page "/tag/{DateText}"
+@implements IDisposable
+@inject EntryService Entries
+@inject ChangeNotifier Notifier
+@inject Clock Clock
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+<PageTitle>@_date.ToString("dddd, dd.MM.yyyy") – Zeitwerk</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4" Wrap="Wrap.Wrap">
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="() => Go(_date.AddDays(-1))" aria-label="Vorheriger Tag" />
+    <MudText Typo="Typo.h5" Class="zw-day-title">@_date.ToString("dddd, dd. MMMM yyyy")</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="() => Go(_date.AddDays(1))" aria-label="Nächster Tag" />
+    @if (_date != Clock.Today)
+    {
+        <MudButton Variant="Variant.Text" OnClick="() => Go(Clock.Today)">Heute</MudButton>
+    }
+    <MudSpacer />
+    <MudText Typo="Typo.h6">Summe: <b>@Format.Duration(_total)</b> h</MudText>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="() => Edit(null)">Eintrag</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-4 mb-4" Elevation="0" Outlined="true">
+    <DayTimeline Date="_date" Entries="_entries" Now="_now" OnEntryClick="Edit" />
+</MudPaper>
+
+@if (_entries.Count == 0)
+{
+    <MudText Class="zw-muted">Keine Einträge an diesem Tag.</MudText>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="true" Elevation="0" Outlined="true" Class="zw-entries">
+        <thead>
+            <tr>
+                <th>Zeit</th>
+                <th class="text-right">Dauer</th>
+                <th>Projekt</th>
+                <th>Tätigkeit</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var entry in _entries)
+            {
+                <tr @onclick="() => Edit(entry)" class="zw-clickable">
+                    <td>
+                        @Clock.ToLocal(entry.Start).ToString("HH:mm") –
+                        @if (entry.End is { } end)
+                        {
+                            @Clock.ToLocal(end).ToString("HH:mm")
+                        }
+                        else if (entry.IsOnHold(_now))
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">on hold</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">läuft</MudChip>
+                        }
+                    </td>
+                    <td class="text-right">@Format.Duration(entry.Duration(_now))</td>
+                    <td><ProjectDot Color="@entry.Project.Color" /> <span class="ml-2">@entry.Project.DisplayName</span></td>
+                    <td>@entry.Activity</td>
+                    <td class="text-right">
+                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" aria-label="Bearbeiten" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+
+    <MudStack Row="true" Spacing="2" Class="mt-4" Wrap="Wrap.Wrap">
+        @foreach (var group in _entries.GroupBy(e => e.ProjectId))
+        {
+            var project = group.First().Project;
+            var sum = group.Aggregate(TimeSpan.Zero, (acc, e) => acc + e.Duration(_now));
+            <MudChip T="string" Variant="Variant.Outlined" Style="@($"border-color:{project.Color}")">
+                <ProjectDot Color="@project.Color" /> <span class="ml-2">@project.DisplayName: <b>@Format.Duration(sum)</b></span>
+            </MudChip>
+        }
+    </MudStack>
+}
+
+@code {
+    [Parameter] public string? DateText { get; set; }
+
+    private DateOnly _date;
+    private List<TimeEntry> _entries = [];
+    private TimeSpan _total;
+    private DateTimeOffset _now;
+    private System.Threading.Timer? _ticker;
+
+    protected override void OnInitialized()
+    {
+        Notifier.Changed += OnChanged;
+        // Laufende Einträge und Jetzt-Linie einmal pro Minute aktualisieren.
+        _ticker = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            _now = Clock.UtcNow;
+            Recalculate();
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _date = DateOnly.TryParseExact(DateText, "yyyy-MM-dd", out var d) ? d : Clock.Today;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _now = Clock.UtcNow;
+        _entries = await Entries.GetEntriesAsync(_date, _date.AddDays(1));
+        Recalculate();
+    }
+
+    private void Recalculate()
+    {
+        var from = Clock.StartOfDay(_date);
+        var to = Clock.StartOfDay(_date.AddDays(1));
+        _total = _entries.Aggregate(TimeSpan.Zero, (acc, e) => acc + EntryService.OverlapWith(e, from, to, _now));
+    }
+
+    private void OnChanged() => InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    private void Go(DateOnly date) =>
+        Nav.NavigateTo(date == Clock.Today ? "" : $"tag/{date:yyyy-MM-dd}");
+
+    private async Task Edit(TimeEntry? entry)
+    {
+        var parameters = new DialogParameters<EntryDialog>
+        {
+            { d => d.Entry, entry },
+            { d => d.Date, _date },
+        };
+        await Dialogs.ShowAsync<EntryDialog>(null, parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
+
+    public void Dispose()
+    {
+        Notifier.Changed -= OnChanged;
+        _ticker?.Dispose();
+    }
+}

@@ -1,0 +1,139 @@
+@page "/stammdaten"
+@inject MasterDataService MasterData
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Stammdaten – Zeitwerk</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+    <MudText Typo="Typo.h5">Kunden &amp; Projekte</MudText>
+    <MudSpacer />
+    <MudSwitch T="bool" @bind-Value="_showArchived" Color="Color.Primary" Label="Archivierte anzeigen" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditCustomer(null)">Kunde</MudButton>
+</MudStack>
+
+@if (_customers.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">Lege zuerst einen Kunden und dann ein Projekt an, um Zeiten zu erfassen.</MudAlert>
+}
+
+@foreach (var customer in _customers.Where(c => _showArchived || !c.IsArchived))
+{
+    <MudPaper Outlined="true" Elevation="0" Class="@("pa-3 mb-3" + (customer.IsArchived ? " zw-archived" : ""))">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudText Typo="Typo.h6">@customer.Name</MudText>
+            @if (customer.IsArchived)
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">archiviert</MudChip>
+            }
+            <MudSpacer />
+            <MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="() => EditProject(null, customer.Id)" Disabled="customer.IsArchived">Projekt</MudButton>
+            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Edit" OnClick="() => EditCustomer(customer)" aria-label="Kunde bearbeiten" />
+            <MudTooltip Text="@(customer.IsArchived ? "Wiederherstellen" : "Archivieren")">
+                <MudIconButton Size="Size.Small" Icon="@(customer.IsArchived ? Icons.Material.Filled.Unarchive : Icons.Material.Filled.Archive)"
+                               OnClick="() => ToggleCustomer(customer)" />
+            </MudTooltip>
+            <MudTooltip Text="Löschen (nur ohne Projekte)">
+                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => DeleteCustomer(customer)" />
+            </MudTooltip>
+        </MudStack>
+
+        @{ var projects = customer.Projects.Where(p => _showArchived || !p.IsArchived).ToList(); }
+        @if (projects.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Class="zw-muted ml-1">Keine Projekte.</MudText>
+        }
+        else
+        {
+            <MudList T="string" Dense="true">
+                @foreach (var project in projects)
+                {
+                    <MudListItem T="string" Class="@(project.IsArchived ? "zw-archived" : "")">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <ProjectDot Color="@project.Color" />
+                            <MudText Class="ml-2">@project.Name</MudText>
+                            @if (project.IsArchived)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">archiviert</MudChip>
+                            }
+                            <MudSpacer />
+                            <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Edit" OnClick="() => EditProject(project, customer.Id)" aria-label="Projekt bearbeiten" />
+                            <MudTooltip Text="@(project.IsArchived ? "Wiederherstellen" : "Archivieren")">
+                                <MudIconButton Size="Size.Small" Icon="@(project.IsArchived ? Icons.Material.Filled.Unarchive : Icons.Material.Filled.Archive)"
+                                               OnClick="() => ToggleProject(project)" />
+                            </MudTooltip>
+                            <MudTooltip Text="Löschen (nur ohne gebuchte Zeiten)">
+                                <MudIconButton Size="Size.Small" Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => DeleteProject(project)" />
+                            </MudTooltip>
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    </MudPaper>
+}
+
+@code {
+    private List<Customer> _customers = [];
+    private bool _showArchived;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _customers = await MasterData.GetCustomersAsync();
+
+    private async Task EditCustomer(Customer? customer)
+    {
+        var dialog = await Dialogs.ShowAsync<CustomerDialog>(null,
+            new DialogParameters<CustomerDialog> { { d => d.Customer, customer } },
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        if (await dialog.Result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task EditProject(Project? project, int customerId)
+    {
+        var dialog = await Dialogs.ShowAsync<ProjectDialog>(null,
+            new DialogParameters<ProjectDialog>
+            {
+                { d => d.Project, project },
+                { d => d.CustomerId, customerId },
+                { d => d.Customers, _customers },
+            },
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        if (await dialog.Result is { Canceled: false })
+            await LoadAsync();
+    }
+
+    private async Task ToggleCustomer(Customer customer)
+    {
+        await MasterData.SetCustomerArchivedAsync(customer.Id, !customer.IsArchived);
+        await LoadAsync();
+    }
+
+    private async Task ToggleProject(Project project)
+    {
+        await MasterData.SetProjectArchivedAsync(project.Id, !project.IsArchived);
+        await LoadAsync();
+    }
+
+    private async Task DeleteCustomer(Customer customer)
+    {
+        if (await Dialogs.ShowMessageBoxAsync("Kunde löschen", $"„{customer.Name}“ wirklich löschen?", yesText: "Löschen", cancelText: "Abbrechen") != true)
+            return;
+        await Report(await MasterData.DeleteCustomerAsync(customer.Id));
+    }
+
+    private async Task DeleteProject(Project project)
+    {
+        if (await Dialogs.ShowMessageBoxAsync("Projekt löschen", $"„{project.Name}“ wirklich löschen?", yesText: "Löschen", cancelText: "Abbrechen") != true)
+            return;
+        await Report(await MasterData.DeleteProjectAsync(project.Id));
+    }
+
+    private async Task Report(string? error)
+    {
+        if (error is not null)
+            Snackbar.Add(error, Severity.Warning);
+        await LoadAsync();
+    }
+}

@@ -1,0 +1,66 @@
+@inject MasterDataService MasterData
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Project is null ? "Projekt anlegen" : "Projekt bearbeiten")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudSelect T="int" @bind-Value="_customerId" Label="Kunde" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var customer in Customers.Where(c => !c.IsArchived || c.Id == _customerId))
+                {
+                    <MudSelectItem T="int" Value="customer.Id">@customer.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_name" Label="Name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Immediate="true" />
+            <div>
+                <MudText Typo="Typo.caption" Class="zw-muted">Farbe</MudText>
+                <div class="zw-swatches">
+                    @foreach (var color in ProjectColors.Palette)
+                    {
+                        <button type="button" class="zw-swatch @(string.Equals(color, _color, StringComparison.OrdinalIgnoreCase) ? "zw-swatch-active" : "")"
+                                style="background:@color" title="@color" @onclick="() => _color = color"></button>
+                    }
+                </div>
+                <MudColorPicker @bind-Text="_color" Label="Eigene Farbe" ColorPickerView="ColorPickerView.Spectrum"
+                                ShowAlpha="false" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" />
+            </div>
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_customerId == 0">Speichern</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Project? Project { get; set; }
+    [Parameter] public int CustomerId { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<Customer> Customers { get; set; } = [];
+
+    private int _customerId;
+    private string _name = "";
+    private string _color = ProjectColors.Palette[0];
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customerId = Project?.CustomerId ?? CustomerId;
+        _name = Project?.Name ?? "";
+        _color = Project?.Color ?? await MasterData.SuggestColorAsync();
+    }
+
+    private async Task Save()
+    {
+        var color = _color.Length > 7 ? _color[..7] : _color; // Alpha-Anteil verwerfen
+        _error = await MasterData.SaveProjectAsync(Project?.Id ?? 0, _customerId, _name, color);
+        if (_error is null)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+}

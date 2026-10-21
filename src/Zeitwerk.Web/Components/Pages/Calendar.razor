@@ -1,0 +1,120 @@
+@page "/kalender"
+@page "/kalender/{MonthText}"
+@implements IDisposable
+@inject EntryService Entries
+@inject ChangeNotifier Notifier
+@inject Clock Clock
+@inject NavigationManager Nav
+
+<PageTitle>Kalender @_month.ToString("MMMM yyyy") – Zeitwerk</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-4">
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" OnClick="() => Go(_month.AddMonths(-1))" aria-label="Vorheriger Monat" />
+    <MudText Typo="Typo.h5" Class="zw-day-title">@_month.ToString("MMMM yyyy")</MudText>
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" OnClick="() => Go(_month.AddMonths(1))" aria-label="Nächster Monat" />
+    @if (_month != FirstOfMonth(Clock.Today))
+    {
+        <MudButton Variant="Variant.Text" OnClick="() => Go(FirstOfMonth(Clock.Today))">Heute</MudButton>
+    }
+    <MudSpacer />
+    <MudText Typo="Typo.h6">Monat: <b>@Format.Duration(_monthTotal)</b> h</MudText>
+</MudStack>
+
+<div class="zw-calendar">
+    @foreach (var name in new[] { "Mo", "Di", "Mi", "Do", "Fr", "Sa", "So" })
+    {
+        <div class="zw-calendar-head">@name</div>
+    }
+    <div class="zw-calendar-head">Woche</div>
+
+    @for (var week = _gridStart; week < _gridEnd; week = week.AddDays(7))
+    {
+        var weekTotal = TimeSpan.Zero;
+        @for (var i = 0; i < 7; i++)
+        {
+            var day = week.AddDays(i);
+            var parts = _byDay.GetValueOrDefault(day) ?? [];
+            var total = parts.Aggregate(TimeSpan.Zero, (acc, p) => acc + p.Duration);
+            weekTotal += total;
+            var css = "zw-calendar-day" + (day.Month != _month.Month ? " zw-other-month" : "")
+                      + (day == Clock.Today ? " zw-today" : "") + (i >= 5 ? " zw-weekend" : "");
+            <div class="@css" @onclick="@(() => Nav.NavigateTo($"tag/{day:yyyy-MM-dd}"))">
+                <div class="zw-calendar-daynum">@day.Day</div>
+                @if (total > TimeSpan.Zero)
+                {
+                    <div class="zw-calendar-total">@Format.Duration(total)</div>
+                    <div class="zw-calendar-bar" title="@string.Join("\n", parts.Select(p => $"{p.Project.DisplayName}: {Format.Duration(p.Duration)}"))">
+                        @foreach (var part in parts)
+                        {
+                            <span style="flex-grow:@((int)part.Duration.TotalMinutes);background:@part.Project.Color"></span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        <div class="zw-calendar-week">
+            <span class="zw-muted">KW @System.Globalization.ISOWeek.GetWeekOfYear(week.ToDateTime(TimeOnly.MinValue))</span>
+            @if (weekTotal > TimeSpan.Zero)
+            {
+                <b>@Format.Duration(weekTotal)</b>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? MonthText { get; set; }
+
+    private sealed record ProjectShare(Project Project, TimeSpan Duration);
+
+    private DateOnly _month, _gridStart, _gridEnd;
+    private Dictionary<DateOnly, List<ProjectShare>> _byDay = [];
+    private TimeSpan _monthTotal;
+
+    protected override void OnInitialized() => Notifier.Changed += OnChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _month = DateOnly.TryParseExact(MonthText + "-01", "yyyy-MM-dd", out var m) ? m : FirstOfMonth(Clock.Today);
+        _gridStart = _month.AddDays(-(((int)_month.DayOfWeek + 6) % 7));
+        var lastDay = _month.AddMonths(1).AddDays(-1);
+        _gridEnd = lastDay.AddDays(7 - ((int)lastDay.DayOfWeek + 6) % 7);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var entries = await Entries.GetEntriesAsync(_gridStart, _gridEnd);
+        var now = Clock.UtcNow;
+        _byDay = [];
+        for (var day = _gridStart; day < _gridEnd; day = day.AddDays(1))
+        {
+            var from = Clock.StartOfDay(day);
+            var to = Clock.StartOfDay(day.AddDays(1));
+            var shares = entries
+                .GroupBy(e => e.ProjectId)
+                .Select(g => new ProjectShare(g.First().Project,
+                    g.Aggregate(TimeSpan.Zero, (acc, e) => acc + EntryService.OverlapWith(e, from, to, now))))
+                .Where(s => s.Duration > TimeSpan.Zero)
+                .OrderByDescending(s => s.Duration)
+                .ToList();
+            if (shares.Count > 0)
+                _byDay[day] = shares;
+        }
+        _monthTotal = _byDay.Where(kv => kv.Key.Month == _month.Month && kv.Key.Year == _month.Year)
+            .SelectMany(kv => kv.Value)
+            .Aggregate(TimeSpan.Zero, (acc, s) => acc + s.Duration);
+    }
+
+    private static DateOnly FirstOfMonth(DateOnly d) => new(d.Year, d.Month, 1);
+
+    private void Go(DateOnly month) => Nav.NavigateTo($"kalender/{month:yyyy-MM}");
+
+    private void OnChanged() => InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Notifier.Changed -= OnChanged;
+}

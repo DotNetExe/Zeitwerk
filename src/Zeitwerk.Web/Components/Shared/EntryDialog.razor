@@ -1,0 +1,116 @@
+@* Zeiteintrag anlegen oder bearbeiten. *@
+@inject EntryService Entries
+@inject MasterDataService MasterData
+@inject Clock Clock
+@inject IDialogService Dialogs
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Entry is null ? "Eintrag hinzufügen" : "Eintrag bearbeiten")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Class="zw-dialog-body">
+            <ProjectPicker Projects="_projects" @bind-Value="_project" Required="true" />
+            <ActivityField ProjectId="_project?.Id" @bind-Value="_activity" />
+            <MudDatePicker Label="Datum" @bind-Date="_date" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           DateFormat="dd.MM.yyyy" ShowWeekNumbers="true" />
+            <MudStack Row="true" Spacing="3">
+                <MudTimePicker Label="Beginn" @bind-Time="_start" MinuteSelectionStep="5" AmPm="false"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Editable="true" />
+                <MudTimePicker Label="Ende" @bind-Time="_end" MinuteSelectionStep="5" AmPm="false"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Editable="true" Disabled="_stillOpen"
+                               HelperText="00:00 = Mitternacht" />
+            </MudStack>
+            @if (Entry?.IsOpen == true)
+            {
+                <MudSwitch T="bool" @bind-Value="_stillOpen" Color="Color.Primary" Label="Läuft noch (offener Eintrag)" />
+            }
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        @if (Entry is not null)
+        {
+            <MudButton Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="Delete" Class="mr-auto">Löschen</MudButton>
+        }
+        <MudButton OnClick="() => MudDialog.Cancel()">Abbrechen</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_project is null">Speichern</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    /// <summary>Zu bearbeitender Eintrag; <c>null</c> legt einen neuen an.</summary>
+    [Parameter] public TimeEntry? Entry { get; set; }
+
+    /// <summary>Vorbelegtes Datum für neue Einträge.</summary>
+    [Parameter] public DateOnly Date { get; set; }
+
+    private List<Project> _projects = [];
+    private Project? _project;
+    private string? _activity;
+    private DateTime? _date;
+    private TimeSpan? _start, _end;
+    private bool _stillOpen;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _projects = await MasterData.GetActiveProjectsAsync();
+        if (Entry is null)
+        {
+            _date = Date.ToDateTime(TimeOnly.MinValue);
+            return;
+        }
+
+        // Archivierte Projekte bleiben für bestehende Einträge wählbar.
+        if (_projects.All(p => p.Id != Entry.ProjectId))
+            _projects.Insert(0, Entry.Project);
+        _project = _projects.First(p => p.Id == Entry.ProjectId);
+        _activity = Entry.Activity;
+        var start = Clock.ToLocal(Entry.Start);
+        _date = start.Date;
+        _start = start.TimeOfDay;
+        _end = Entry.End is { } end ? Clock.ToLocal(end).TimeOfDay : null;
+        _stillOpen = Entry.IsOpen;
+    }
+
+    private async Task Save()
+    {
+        _error = null;
+        if (_project is null || _date is null || _start is null || (!_stillOpen && _end is null))
+        {
+            _error = "Bitte Projekt, Datum, Beginn und Ende angeben.";
+            return;
+        }
+
+        var start = Clock.ToUtc(_date.Value + _start.Value);
+        DateTimeOffset? end = null;
+        if (!_stillOpen)
+        {
+            // Ende vor/gleich Beginn um 00:00 bedeutet Mitternacht am Folgetag.
+            var endLocal = _date.Value + _end!.Value;
+            if (_end.Value == TimeSpan.Zero)
+                endLocal = endLocal.AddDays(1);
+            end = Clock.ToUtc(endLocal);
+        }
+
+        _error = await Entries.SaveAsync(Entry?.Id ?? 0, _project.Id, _activity, start, end);
+        if (_error is null)
+            MudDialog.Close(DialogResult.Ok(true));
+    }
+
+    private async Task Delete()
+    {
+        var confirmed = await Dialogs.ShowMessageBoxAsync("Eintrag löschen", "Diesen Eintrag wirklich löschen?",
+            yesText: "Löschen", cancelText: "Abbrechen");
+        if (confirmed != true)
+            return;
+        await Entries.DeleteAsync(Entry!.Id);
+        MudDialog.Close(DialogResult.Ok(true));
+    }
+}

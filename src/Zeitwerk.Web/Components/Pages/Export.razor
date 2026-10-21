@@ -1,0 +1,105 @@
+@page "/export"
+@inject MasterDataService MasterData
+@inject EntryService Entries
+@inject Clock Clock
+
+<PageTitle>Export – Zeitwerk</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">CSV-Export</MudText>
+
+<MudPaper Outlined="true" Elevation="0" Class="pa-4" Style="max-width:640px">
+    <MudStack Spacing="3">
+        <MudStack Row="true" Spacing="3">
+            <MudDatePicker Label="Von" Date="_from" DateChanged="d => Set(() => _from = d)" DateFormat="dd.MM.yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudDatePicker Label="Bis" Date="_to" DateChanged="d => Set(() => _to = d)" DateFormat="dd.MM.yyyy"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </MudStack>
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.Wrap">
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => Preset(0)">Dieser Monat</MudButton>
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => Preset(-1)">Letzter Monat</MudButton>
+        </MudStack>
+        <MudSelect T="int?" Label="Kunde (optional)" Value="_customerId" ValueChanged="v => Set(() => { _customerId = v; _projectId = null; })"
+                   Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+            @foreach (var customer in _customers)
+            {
+                <MudSelectItem T="int?" Value="customer.Id">@customer.Name@(customer.IsArchived ? " (archiviert)" : "")</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="int?" Label="Projekt (optional)" Value="_projectId" ValueChanged="v => Set(() => _projectId = v)"
+                   Clearable="true" Variant="Variant.Outlined" Margin="Margin.Dense">
+            @foreach (var project in _customers.Where(c => _customerId is null || c.Id == _customerId).SelectMany(c => c.Projects, (c, p) => (c, p)))
+            {
+                <MudSelectItem T="int?" Value="project.p.Id">@project.c.Name / @project.p.Name@(project.p.IsArchived ? " (archiviert)" : "")</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudText Typo="Typo.body2" Class="zw-muted">
+            @_count abgeschlossene Einträge · @Format.Duration(_sum) h
+        </MudText>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FileDownload"
+                   Href="@DownloadUrl" download="" Disabled="@(DownloadUrl is null)">
+            CSV herunterladen
+        </MudButton>
+        <MudText Typo="Typo.caption" Class="zw-muted">
+            Semikolon-getrennt, UTF-8 ohne BOM. In Excel über „Daten → Aus Text/CSV“ importieren, damit Umlaute korrekt erscheinen.
+        </MudText>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private List<Customer> _customers = [];
+    private DateTime? _from, _to;
+    private int? _customerId, _projectId;
+    private int _count;
+    private TimeSpan _sum;
+
+    private string? DownloadUrl => _from is null || _to is null || _to < _from
+        ? null
+        : $"export.csv?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}"
+          + (_customerId is { } c ? $"&customerId={c}" : "")
+          + (_projectId is { } p ? $"&projectId={p}" : "");
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await MasterData.GetCustomersAsync();
+        await Preset(0);
+    }
+
+    private async Task Preset(int monthOffset)
+    {
+        var today = Clock.Today;
+        var first = new DateOnly(today.Year, today.Month, 1).AddMonths(monthOffset);
+        _from = first.ToDateTime(TimeOnly.MinValue);
+        _to = first.AddMonths(1).AddDays(-1).ToDateTime(TimeOnly.MinValue);
+        await UpdatePreviewAsync();
+    }
+
+    private async Task Set(Action change)
+    {
+        change();
+        await UpdatePreviewAsync();
+    }
+
+    private async Task UpdatePreviewAsync()
+    {
+        if (_from is null || _to is null || _to < _from)
+        {
+            _count = 0;
+            _sum = TimeSpan.Zero;
+            return;
+        }
+        var from = DateOnly.FromDateTime(_from.Value);
+        var to = DateOnly.FromDateTime(_to.Value);
+        var fromUtc = Clock.StartOfDay(from);
+        var toUtc = Clock.StartOfDay(to.AddDays(1));
+        var entries = (await Entries.GetEntriesAsync(from, to.AddDays(1)))
+            .Where(e => e.End is not null && e.Start >= fromUtc && e.Start < toUtc)
+            .Where(e => _customerId is null || e.Project.CustomerId == _customerId)
+            .Where(e => _projectId is null || e.ProjectId == _projectId)
+            .ToList();
+        _count = entries.Count;
+        _sum = entries.Aggregate(TimeSpan.Zero, (acc, e) => acc + (e.End!.Value - e.Start));
+    }
+}

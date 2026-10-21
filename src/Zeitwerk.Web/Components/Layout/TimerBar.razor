@@ -1,0 +1,159 @@
+@implements IDisposable
+@inject TimerService Timer
+@inject EntryService Entries
+@inject MasterDataService MasterData
+@inject ChangeNotifier Notifier
+@inject Clock Clock
+@inject ISnackbar Snackbar
+
+<MudPaper Elevation="0" Class="zw-timerbar" Square="true">
+    <div class="zw-timerbar-current">
+        @if (_open is null)
+        {
+            <MudIcon Icon="@Icons.Material.Filled.PauseCircleOutline" Color="Color.Default" />
+            <MudText Typo="Typo.body1" Class="zw-muted">Kein Timer aktiv</MudText>
+        }
+        else
+        {
+            var onHold = _open.IsOnHold(_now);
+            <span class="zw-pulse @(onHold ? "zw-pulse-hold" : "")" style="--c:@_open.Project.Color"></span>
+            <div class="zw-current-text">
+                <MudText Typo="Typo.subtitle2">@_open.Project.DisplayName</MudText>
+                @if (onHold)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning">
+                        On hold · startet um @Clock.ToLocal(_open.Start).ToString("HH:mm") (in @Format.Running(_open.Start - _now))
+                    </MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="zw-muted">seit @Clock.ToLocal(_open.Start).ToString("HH:mm")</MudText>
+                }
+            </div>
+            <ActivityField ProjectId="_open.ProjectId" Label="Tätigkeit (aktuell)" Value="@_openActivity"
+                           ValueChanged="SaveOpenActivity" Class="zw-activity" />
+            <MudText Typo="Typo.h5" Class="zw-clock">@(onHold ? "0:00:00" : Format.Running(_open.Duration(_now)))</MudText>
+            <MudTooltip Text="Stoppen (Ende wird auf 5 Minuten aufgerundet)">
+                <MudIconButton Icon="@Icons.Material.Filled.Stop" Color="Color.Error" Variant="Variant.Filled"
+                               Size="Size.Medium" OnClick="Stop" Disabled="_busy" />
+            </MudTooltip>
+        }
+    </div>
+
+    @if (_open is not null && _open.Duration(_now) > TimerSettings.LongRunningThreshold)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+            Der Timer läuft seit über @((int)TimerSettings.LongRunningThreshold.TotalHours) Stunden – vergessen zu stoppen?
+            Einträge lassen sich in der Tagesansicht korrigieren.
+        </MudAlert>
+    }
+
+    <div class="zw-timerbar-switch">
+        <ProjectPicker Projects="_projects" @bind-Value="_nextProject" Label="@(_open is null ? "Starten mit Projekt" : "Wechseln zu Projekt")" Class="zw-project" />
+        <ActivityField ProjectId="_nextProject?.Id" @bind-Value="_nextActivity" OnEnter="SwitchToSelection" Class="zw-activity" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SwitchToSelection"
+                   Disabled="@(_nextProject is null || _busy)"
+                   StartIcon="@(_open is null ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.SwapHoriz)">
+            @(_open is null ? "Start" : "Wechseln")
+        </MudButton>
+    </div>
+
+    @if (_recent.Count > 0)
+    {
+        <div class="zw-recent">
+            <MudText Typo="Typo.caption" Class="zw-muted mr-1">Zuletzt:</MudText>
+            @foreach (var work in _recent)
+            {
+                var active = _open is not null && _open.IsSameWork(work.Project.Id, work.Activity);
+                <MudChip T="string" Size="Size.Small" Variant="@(active ? Variant.Filled : Variant.Outlined)"
+                         Disabled="@(active || _busy)" OnClick="@(() => SwitchTo(work.Project.Id, work.Activity))"
+                         Style="@($"border-color:{work.Project.Color}")">
+                    <ProjectDot Color="@work.Project.Color" />
+                    <span class="ml-1">@work.Project.Name@(work.Activity is null ? "" : $" · {work.Activity}")</span>
+                </MudChip>
+            }
+        </div>
+    }
+</MudPaper>
+
+@code {
+    private TimeEntry? _open;
+    private string? _openActivity;
+    private List<Project> _projects = [];
+    private List<RecentWork> _recent = [];
+    private Project? _nextProject;
+    private string? _nextActivity;
+    private DateTimeOffset _now;
+    private bool _busy;
+    private System.Threading.Timer? _ticker;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _now = Clock.UtcNow;
+        await LoadAsync();
+        Notifier.Changed += OnChanged;
+        _ticker = new System.Threading.Timer(_ => InvokeAsync(() =>
+        {
+            _now = Clock.UtcNow;
+            StateHasChanged();
+        }), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private async Task LoadAsync()
+    {
+        _open = await Timer.GetOpenAsync();
+        _openActivity = _open?.Activity;
+        _projects = await MasterData.GetActiveProjectsAsync();
+        _recent = await Entries.GetRecentWorkAsync();
+        _nextProject = _nextProject is null ? null : _projects.FirstOrDefault(p => p.Id == _nextProject.Id);
+    }
+
+    private void OnChanged() => InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    private async Task SwitchToSelection()
+    {
+        if (_nextProject is null)
+            return;
+        await SwitchTo(_nextProject.Id, _nextActivity);
+        _nextProject = null;
+        _nextActivity = null;
+    }
+
+    private Task SwitchTo(int projectId, string? activity) => Run(() => Timer.SwitchToAsync(projectId, activity));
+
+    private Task Stop() => Run(Timer.StopAsync);
+
+    private async Task SaveOpenActivity(string? activity)
+    {
+        _openActivity = activity;
+        if (_open is not null && TimeEntry.NormalizeActivity(activity) != _open.Activity)
+            await Run(() => Timer.UpdateOpenActivityAsync(activity));
+    }
+
+    private async Task Run(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        Notifier.Changed -= OnChanged;
+        _ticker?.Dispose();
+    }
+}

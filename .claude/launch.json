@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "zeitwerk-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "src/Zeitwerk.Web", "--launch-profile", "http"],
+      "port": 5221
+    }
+  ]
+}

@@ -23,6 +23,37 @@ html, body {
     text-align: center;
 }
 
+/* Wortmarke in der App-Bar */
+.zw-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--mud-palette-appbar-text);
+    text-decoration: none;
+}
+
+.zw-brand-mark {
+    width: 28px;
+    height: 28px;
+    transition: transform .6s ease;
+}
+
+.zw-brand:hover .zw-brand-mark {
+    transform: rotate(30deg);
+}
+
+.zw-brand-word {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    line-height: 1;
+}
+
+.zw-brand-word span {
+    font-weight: 300;
+    color: var(--mud-palette-primary);
+}
+
 /* App-Bar-Navigation */
 .zw-appbar .zw-navlink {
     width: auto;

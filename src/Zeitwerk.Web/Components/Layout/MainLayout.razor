@@ -7,8 +7,10 @@
 
 <MudLayout>
     <MudAppBar Elevation="0" Dense="true" Class="zw-appbar">
-        <MudIcon Icon="@Icons.Material.Filled.Schedule" Class="mr-2" />
-        <MudText Typo="Typo.h6" Class="mr-6">Zeitwerk</MudText>
+        <a href="" class="zw-brand mr-6" aria-label="Zeitwerk – zur Tagesansicht">
+            <img src="@Assets["logo.svg"]" alt="" class="zw-brand-mark" />
+            <span class="zw-brand-word">Zeit<span>werk</span></span>
+        </a>
         <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Today" Class="zw-navlink">Tag</MudNavLink>
         <MudNavLink Href="kalender" Icon="@Icons.Material.Filled.CalendarMonth" Class="zw-navlink">Kalender</MudNavLink>
         <MudNavLink Href="stammdaten" Icon="@Icons.Material.Filled.FolderOpen" Class="zw-navlink">Stammdaten</MudNavLink>

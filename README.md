@@ -1,3 +1,5 @@
+<p><img src="src/Zeitwerk.Web/wwwroot/wordmark.svg" alt="Zeitwerk" height="56"></p>
+
 # Zeitwerk
 
 Einzelplatz-Zeiterfassung mit fließendem Projektwechsel im 5-Minuten-Raster.

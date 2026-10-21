@@ -129,6 +129,8 @@ html, body {
 }
 
 .zw-pulse {
+    flex-shrink: 0;
+    box-sizing: border-box;
     width: 14px;
     height: 14px;
     border-radius: 50%;

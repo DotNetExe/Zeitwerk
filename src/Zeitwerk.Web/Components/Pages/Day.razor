@@ -39,7 +39,6 @@ else
                 <th class="text-right">Dauer</th>
                 <th>Projekt</th>
                 <th>Tätigkeit</th>
-                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -64,9 +63,6 @@ else
                     <td class="text-right">@Format.Duration(entry.Duration(_now))</td>
                     <td><ProjectDot Color="@entry.Project.Color" /> <span class="ml-2">@entry.Project.DisplayName</span></td>
                     <td>@entry.Activity</td>
-                    <td class="text-right">
-                        <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" aria-label="Bearbeiten" />
-                    </td>
                 </tr>
             }
         </tbody>
